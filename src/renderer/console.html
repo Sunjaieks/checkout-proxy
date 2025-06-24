@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Request Console</title>
+    <meta content="script-src 'self'; style-src 'self' 'unsafe-inline';" http-equiv="Content-Security-Policy">
+    <link href="./style/styles.css" rel="stylesheet">
+    <link href="./style/json-table.css" rel="stylesheet">
+    <link href="./style/find-bar.css" rel="stylesheet">
+    <style>
+        .console-body {
+            background-color: #f8f9fa;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .console-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            padding: 12px;
+            box-sizing: border-box;
+        }
+
+        .console-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #e67e22;
+            margin-bottom: 12px;
+            flex-shrink: 0;
+        }
+
+        .console-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .console-title-icon {
+            font-size: 1.2em;
+        }
+
+        .console-info-btn {
+            background: #e8ecf0;
+            border: none;
+            color: #e67e22;
+            cursor: pointer;
+            padding: 0;
+            font-size: 13px;
+            font-weight: bold;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 5px;
+            margin-top: 2px;
+            vertical-align: middle;
+        }
+
+        .console-info-btn:hover {
+            background: #e67e22;
+            color: #fff;
+        }
+
+        /* Console Info Modal */
+        .console-info-modal {
+            display: flex;
+            visibility: hidden;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out, visibility 0.3s;
+        }
+
+        .console-info-modal.visible {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .console-info-content {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            max-width: 500px;
+            max-height: 90vh;
+            overflow: auto;
+            margin: 20px;
+        }
+
+        .console-info-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            border-bottom: 1px solid #e8ecf0;
+            background: #fef5ed;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .console-info-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #e67e22;
+        }
+
+        .console-info-close {
+            background: none;
+            border: none;
+            font-size: 18px;
+            color: #999;
+            cursor: pointer;
+            padding: 4px 8px;
+        }
+
+        .console-info-close:hover {
+            color: #333;
+        }
+
+        .console-info-body {
+            padding: 20px;
+        }
+
+        .console-info-body section {
+            margin-bottom: 16px;
+        }
+
+        .console-info-body section:last-child {
+            margin-bottom: 0;
+        }
+
+        .console-info-body h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #2c3e50;
+        }
+
+        .console-info-body ul {
+            margin: 0;
+            padding-left: 20px;
+            font-size: 13px;
+            line-height: 1.8;
+            color: #444;
+        }
+
+        .console-info-body .info-highlight {
+            background: #fef9e7;
+            padding: 12px 16px;
+            border-radius: 6px;
+            border-left: 3px solid #e67e22;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .console-info-body .info-highlight strong {
+            color: #e67e22;
+        }
+
+        #json-table-container {
+            flex: 1;
+            min-height: 0;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+
+        .console-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 5px 0 5px;
+            flex-shrink: 0;
+        }
+
+        .console-footer-left {
+            font-size: 0.85em;
+            color: #666;
+        }
+
+        .console-btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .console-btn-primary {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            color: white;
+        }
+
+        .console-btn-primary:hover {
+            background: linear-gradient(135deg, #c0392b 0%, #a33025 100%);
+            transform: translateY(-1px);
+        }
+
+        .console-btn-secondary {
+            background: #fff;
+            color: #666;
+            border: 1px solid #d1d5da;
+            margin-right: 8px;
+        }
+
+        .console-btn-secondary:hover {
+            background: #f8f9fa;
+            border-color: #adb5bd;
+        }
+    </style>
+</head>
+<body class="console-body">
+<div class="console-container">
+    <div class="console-header">
+        <div class="console-title" style="font-family: 'Georgia', serif;">
+            <span class="console-title-icon">📋</span>
+            Request Console
+            <button class="console-info-btn" id="console-info-btn" title="About Request Console">?</button>
+        </div>
+    </div>
+
+<!-- Console Info Modal -->
+<div class="console-info-modal" id="console-info-modal">
+    <div class="console-info-content">
+        <div class="console-info-header">
+            <span class="console-info-title">About Request Console</span>
+            <button class="console-info-close" id="console-info-close">✕</button>
+        </div>
+        <div class="console-info-body">
+            <section>
+                <h3>📋 Overview</h3>
+                <ul>
+                    <li>Records HTTP/HTTPS requests and response that match rules defined in your profile</li>
+                    <li>Displays the <b>final</b> request parameters after MITM proxy modifications</li>
+                    <li>Requests without matching any rule are not recorded</li>
+                </ul>
+            </section>
+            <section>
+                <h3>💾 Data Persistence</h3>
+                <div class="info-highlight">
+                    <strong>Requests are preserved even when this window is closed!</strong><br>
+                    When you reopen the Console, you will see all previously recorded requests.
+                </div>
+            </section>
+            <section>
+                <h3>📊 Limits</h3>
+                <ul>
+                    <li>Maximum <b>1000</b> requests are stored (FIFO)</li>
+                    <li>Oldest requests are removed when limit is reached</li>
+                    <li>Click "Clear" to manually delete all records</li>
+                </ul>
+            </section>
+            <section>
+                <h3>🪄 Tips</h3>
+                <ul>
+                    <li><b>Double-click</b> the row to open a window of Entry Details</li>
+                    <li>In the Entry Details window, <b>double-click</b> any position within the request/response body's header section for expending</li>
+                </ul>
+            </section>
+        </div>
+    </div>
+</div>
+
+    <div id="json-table-container"></div>
+
+    <div class="console-footer">
+        <div class="console-footer-left">
+            Press Ctrl/Cmd+F to search, Press Ctrl/Cmd+D to clear
+        </div>
+        <div class="console-footer-right">
+            <button class="console-btn console-btn-secondary" id="clear-btn">Clear</button>
+            <button class="console-btn console-btn-primary" id="close-btn">Close</button>
+        </div>
+    </div>
+</div>
+<script src="./src/console-renderer.js" type="module"></script>
+</body>
+</html>
