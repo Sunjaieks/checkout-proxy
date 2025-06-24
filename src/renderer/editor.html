@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Configuration</title>
+    <meta content="worker-src blob:; script-src data: 'self'; style-src 'self' 'unsafe-inline';" http-equiv="Content-Security-Policy">
+    <link href="./style/styles.css" rel="stylesheet">
+</head>
+<body style="padding-bottom: 0">
+<div class="editor-container">
+    <div  class="editor-container-title">
+        <h2 style="margin-top: 12px; margin-left: 5px">Edit Configuration</h2>
+        <div class='editor-category'>
+                <div class="edit-tab-button selected"  id="fullConfigButton">full config</div>
+                <div class="edit-tab-button"  id="globalSettingsButton">global settings</div>
+                <div class="edit-tab-button"  id="hackFunctionsButton">hack functions</div>
+        </div>
+    </div>
+    <div class="textarea-and-message">
+        <div class="text-editor multiple" id="configEditor"></div>
+        <p id="infoOrErrorMessage" style="margin-left: 5px"></p>
+    </div>
+    <div class="editor-actions">
+        <div style="padding: 0; margin-left: 5px">
+            <button id="btnReset"  class="button-common">Reset Options</button>
+        </div>
+        <div style="padding: 0; margin-right: 5px">
+            <button id="btnAbort"  class="button-common">Abort</button>
+            <button id="btnSaveAndClose" class="button-common">Save and Close</button>
+        </div>
+    </div>
+</div>
+<script type="module" src="./src/editor-renderer.js"></script>
+</body>
+</html>

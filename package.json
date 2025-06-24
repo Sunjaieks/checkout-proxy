@@ -1,0 +1,116 @@
+{
+  "name": "checkout-proxy",
+  "version": "1.4.9",
+  "description": "HTTPS Proxy with dynamic certificate generation and host mapping",
+  "main": "./out/main/main.js",
+  "scripts": {
+    "start": "electron-vite dev --sourcemap --remote-debugging-port=9222",
+    "watch": "electron-vite dev --watch --sourcemap --remote-debugging-port=9222",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:win-mac": "npm run build && electron-builder --mac --win --publish never"
+  },
+  "author": "sunjaieks",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "@babel/parser": "^7.28.3",
+    "@vscode/sudo-prompt": "^9.3.1",
+    "ace-builds": "^1.43.2",
+    "electron-store": "^11.0.2",
+    "node-forge": "^1.3.3",
+    "terser": "^5.43.1"
+  },
+  "devDependencies": {
+    "electron": "37.1.0",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^3.1.0",
+    "vite": "^6.3.5"
+  },
+  "build": {
+    "appId": "sunjaieks.checkoutproxy",
+    "productName": "CheckoutProxy",
+    "executableName": "CheckoutProxy",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "files": [
+      "out/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "resources",
+        "filter": [
+          "!favicon.ico",
+          "!icon.icns",
+          "!fallback_ca.cnf",
+          "!root_ca.cnf",
+          "!root_ca.crt",
+          "!root_ca.key"
+        ]
+      },
+      {
+        "from": "README.md",
+        "to": "README.md"
+      }
+    ],
+    "directories": {
+      "buildResources": "resources",
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/favicon.ico"
+    },
+    "mac": {
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "This permission is required to route your DNS queries privately to remote servers.",
+        "com.apple.developer.networking.multicast": true,
+        "com.apple.security.network.client": true,
+        "com.apple.security.network.server": true,
+        "com.apple.security.cs.allow-jit": true,
+        "com.apple.security.cs.allow-unsigned-executable-memory": true,
+        "com.apple.developer.networking.networkextension": [
+          "app-proxy-provider",
+          "dns-proxy",
+          "content-filter-provider",
+          "packet-tunnel-provider",
+          "dns-proxy-systemextension",
+          "app-proxy-provider-systemextension",
+          "content-filter-provider-systemextension",
+          "packet-tunnel-provider-systemextension",
+          "dns-settings",
+          "app-push-provider",
+          "relay"
+        ]
+      },
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "identity": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "engines": {
+    "node": "22.16.0",
+    "npm": "10.9.2"
+  }
+}
