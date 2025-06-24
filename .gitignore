@@ -1,0 +1,17 @@
+# OS
+.DS_Store
+
+# IDE stuff
+.idea/
+*.iml
+.vscode/
+.history
+.project
+
+# Node stuff
+node_modules/
+.npm
+
+# Some build artifacts
+dist/
+out/

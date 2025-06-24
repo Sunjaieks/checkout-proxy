@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Checkout-Proxy</title>
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self'; style-src 'self' 'unsafe-inline';">
+    <link rel="stylesheet" href="./style/styles.css">
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1 class="title">Checkout-Proxy</h1>
+        <div class="status-info">
+            <p id="activeProfileDisplay" style="display: flex; align-items: center; justify-content: flex-end">
+                <span style="margin-right: 4px">Active: </span>
+                <span id="activeProfileName" class="active-profile-name">None</span>
+                <span id="activeProfileIndicator" class="indicator"></span>
+            </p>
+            <p style="font-size: 0.8em; color: grey;">proxy port: <span id="httpPort">N/A</span>,<span id="httpsPort">N/A</span></p>
+            <p id="app-version-display">Version: loading...</p>
+        </div>
+    </div>
+
+    <div class="buttons-panel">
+        <button id="btnInstructions">Instructions</button>
+        <button id="btnEditConfig">Edit Config</button>
+        <button id="btnImportConfig">Import Config</button>
+        <button id="btnExportConfig">Export Config</button>
+        <button id="btnDirectConnect">Direct Connect</button>
+        <button id="btnStopProxy">Stop</button>
+    </div>
+
+    <p id="statusMessage" style="margin: 10px 5px;font-size: 0.8em; color: grey;"></p>
+    <div id="profilesList" class="profiles-area">
+        <!-- Profiles will be listed here -->
+    </div>
+</div>
+<script type="module" src="./src/renderer.js"></script>
+</body>
+</html>

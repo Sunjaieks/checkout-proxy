@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Configuration</title>
+    <meta content="script-src 'self'; style-src 'self' 'unsafe-inline';" http-equiv="Content-Security-Policy">
+    <link href="./style/styles.css" rel="stylesheet">
+</head>
+<body>
+<div class="editor-container">
+    <h2 style="margin-top: 0; margin-left: 5px">Edit Configuration (JSON)</h2>
+    <div class="textarea-and-message">
+        <textarea id="jsonEditor"></textarea>
+        <p id="infoOrErrorMessage" style="margin-left: 5px"></p>
+    </div>
+    <div class="editor-actions">
+        <div style="padding: 0; margin-left: 5px">
+            <button id="btnReset">Reset to Default</button>
+        </div>
+        <div style="padding: 0; margin-right: 5px">
+            <button id="btnAbort">Abort</button>
+            <button id="btnSaveAndClose">Save and Close</button>
+        </div>
+    </div>
+</div>
+<script type="module" src="./src/editor-renderer.js"></script>
+</body>
+</html>

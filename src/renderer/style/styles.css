@@ -1,0 +1,229 @@
+html {
+    height: 100vh;
+}
+
+ol, ul, ul {
+    padding-left: 30px;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 15px 10px 15px 10px;
+    background-color: #f4f7f6;
+    color: #333;
+    font-size: 14px;
+    height: 94vh;
+}
+
+p {
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.container {
+    max-width: 700px;
+    margin: 0 auto;
+    height: 73vh;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start; /* Align items to the top */
+    margin-bottom: 15px;
+    padding-left: 5px;
+    padding-right: 5px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+.title {
+    font-family: 'Georgia', serif; /* Example of a special font */
+    font-size: 2.5em;
+    color: #2c3e50;
+    margin: 0;
+}
+
+.status-info {
+    text-align: right;
+    font-size: 0.9em;
+    color: #555;
+}
+
+.status-info p {
+    margin: 2px 0;
+}
+
+.status-info #app-version-display {
+    font-size: 0.8em;
+    color: #777;
+    margin-bottom: 4px;
+}
+
+.active-profile-name {
+    font-weight: bold;
+}
+
+.indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: #ccc; /* Default: off */
+    margin-left: 5px;
+    vertical-align: middle;
+}
+
+.indicator.on {
+    background-color: #2ecc71; /* Green: on */
+}
+
+.indicator.error {
+    background-color: #e74c3c; /* Red: error */
+}
+
+button.on {
+    box-shadow: 5px 5px 5px #2ecc71 /* Green: on */
+}
+
+.buttons-panel {
+    margin-left: 5px;
+    margin-bottom: 10px;
+    display: flex;
+    gap: 10px; /* Space between buttons */
+}
+
+button {
+    padding: 10px 12px;
+    font-size: 0.95em;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+button:hover {
+    background-color: #2980b9;
+}
+
+button:disabled {
+    background-color: #bdc3c7;
+    cursor: not-allowed;
+}
+
+.profiles-area {
+    flex-grow: 1; /* Takes remaining vertical space */
+    /*height: 470px;*/
+    height: 100%;
+    overflow-y: scroll;
+    border: 1px solid #d1d5da; /* GitHub-like border */
+    border-radius: 6px;
+    background-color: #ffffff;
+    padding: 2px 0; /* Remove padding, item will have it */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.profile-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.profile-item:nth-child(odd) {
+}
+
+.profile-item:nth-child(even) {
+    background-color: #f7f7f7;
+}
+
+.profile-item:last-child {
+    border-bottom: none;
+}
+
+.profile-name {
+    flex-grow: 1;
+    font-size: 1.05em;
+    color: #24292e;
+}
+
+.profile-actions button {
+    padding: 5px 15px;
+    height: 30px;
+    margin-left: 10px;
+    background-color: #1abc9c;
+}
+
+.profile-actions button:hover {
+    background-color: #16a085;
+}
+
+.profile-indicator-container {
+    width: 30px; /* Space for indicator */
+    text-align: center;
+}
+
+/* For editor.html */
+.editor-container {
+    max-width: 700px;
+    margin: 0 auto;
+    height: 95vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.textarea-and-message {
+    margin-bottom: auto;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+#jsonEditor {
+    width: 98%;
+    font-family: monospace;
+    font-size: 1em;
+    border: 1px solid #ccc;
+    padding: 10px;
+    flex-grow: 1;
+}
+
+.editor-actions {
+    display: flex;
+    justify-content: space-between;
+}
+
+/* For instructions.html */
+.markdown-body { /* Basic styling for markdown */
+    line-height: 1.6;
+}
+
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+    color: #0366d6; /* Blue for headers */
+    border-bottom: 1px solid #eee;
+}
+
+.markdown-body code {
+    background-color: #f0f0f0;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+}
+
+.markdown-body pre > code {
+    display: block;
+    padding: 10px;
+    overflow-x: auto;
+}
+
+#downloadButton {
+    cursor: pointer;
+    color: #0366d6;
+    text-decoration: underline;
+    font-weight: bold;
+    font-style: italic;
+}

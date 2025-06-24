@@ -1,0 +1,8 @@
+{
+  "configVersion": 1,
+  "appPort": [
+    8001,
+    8002
+  ],
+  "profile": []
+}
