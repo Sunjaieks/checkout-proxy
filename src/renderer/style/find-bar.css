@@ -1,0 +1,89 @@
+.find-bar {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    background: #fff;
+    border: 1px solid #d3dae6;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    padding: 8px 12px;
+    gap: 8px;
+    align-items: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.find-bar.visible {
+    display: flex;
+}
+
+.find-bar input {
+    width: 250px;
+    padding: 6px 10px;
+    border: 1px solid #d3dae6;
+    border-radius: 4px;
+    font-size: 13px;
+    outline: none;
+}
+
+.find-bar input:focus {
+    border-color: var(--find-accent, #e67e22);
+    box-shadow: 0 0 0 2px rgba(230, 126, 34, 0.2);
+}
+
+.find-bar-btn {
+    padding: 6px 10px;
+    background: #f5f7fa;
+    border: 1px solid #d3dae6;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.find-bar-btn:hover {
+    background: #e8ecf0;
+}
+
+.find-bar-info {
+    font-size: 12px;
+    color: #666;
+    min-width: 60px;
+}
+
+.find-bar-close {
+    background: none;
+    border: none;
+    font-size: 16px;
+    color: #999;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+.find-bar-close:hover {
+    color: #333;
+}
+
+.find-cell-highlight {
+    background-color: rgba(255, 235, 59, 0.35);
+}
+
+.find-cell-highlight-current {
+    background-color: rgba(255, 152, 0, 0.35);
+}
+
+.find-highlight {
+    background-color: #ffeb3b;
+    color: #000;
+    padding: 1px 2px;
+    border-radius: 2px;
+}
+
+.find-highlight-current {
+    background-color: #ff9800;
+    color: #000;
+    padding: 1px 2px;
+    border-radius: 2px;
+}

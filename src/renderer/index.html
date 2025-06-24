@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Checkout-Proxy</title>
+    <meta content="script-src 'self'; style-src 'self' 'unsafe-inline';" http-equiv="Content-Security-Policy">
+    <link href="./style/styles.css" rel="stylesheet">
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1 class="title">Checkout-Proxy</h1>
+        <div class="status-info">
+            <p style="display: flex; flex-direction: column;">
+                <span id="activeProfile" style="display: flex; align-items: center; justify-content: flex-end">
+                    <span style="margin-right: 4px">Active: </span>
+                    <span class="active-profile-name" id="activeProfileName">None</span>
+                    <span class="indicator" id="activeProfileIndicator"></span>
+                </span>
+                <span id="activePlaceholder"></span>
+            </p>
+            <p id="app-port">app port: <span id="httpPort">N/A</span><span id="httpsPort"></span>
+            </p>
+            <p id="app-version-display">Version: loading...</p>
+        </div>
+    </div>
+
+    <div class="buttons-panel">
+        <button id="btnMainMoreOptions" class="button-common">More</button>
+        <button id="btnEditConfig" class="button-common">Edit Config</button>
+        <button id="btnTools" class="button-common">Tools</button>
+        <button id="btnConsole" class="button-common">Console</button>
+        <button id="btnDirectConnect" class="button-common">Direct Connect</button>
+        <button id="btnStopProxy" class="button-common">Stop</button>
+    </div>
+
+    <p id="statusMessage"></p>
+    <div class="profiles-area" id="profilesArea">
+        <div class="profiles-area-inner">
+        </div>
+    </div>
+</div>
+<div class="overlay" id="placeholder-overlay">
+    <div class="popover" id="placeholder-dialog">
+        <div class="popover-content">
+            <div id="placeholder-inputs">
+            </div>
+        </div>
+        <div class="popover-actions">
+            <div id="placeholder-ok-btn" tabindex="0">OK</div>
+        </div>
+    </div>
+</div>
+<div class="overlay" id="more-overlay">
+    <div class="popover more-popup" id="more-popup">
+        <div class="more-popup-title">More Options</div>
+        <div class="more-popup-content">
+            <button class="more-popup-btn" id="more-import-config">
+                <span class="more-popup-btn-icon">📥</span>
+                Import Config
+            </button>
+            <button class="more-popup-btn" id="more-export-config">
+                <span class="more-popup-btn-icon">📤</span>
+                Export Config
+            </button>
+            <div class="more-popup-divider"></div>
+            <button class="more-popup-btn" id="more-open-help">
+                <span class="more-popup-btn-icon">❓</span>
+                Open Help Window
+            </button>
+            <button class="more-popup-btn" id="more-generate-ca">
+                <span class="more-popup-btn-icon">🔐</span>
+                Create and Trust new CA
+            </button>
+            <button class="more-popup-btn" id="more-download-ca">
+                <span class="more-popup-btn-icon">📜</span>
+                Download CA Certificate
+            </button>
+            <button class="more-popup-btn" id="more-show-ca-link">
+                <span class="more-popup-btn-icon">🔗</span>
+                Show Download Link of CA
+            </button>
+            <div class="more-popup-divider"></div>
+            <button class="more-popup-btn" id="more-clear-cache">
+                <span class="more-popup-btn-icon">🗑️</span>
+                Clear App Cache
+            </button>
+            <button class="more-popup-btn" id="more-check-update">
+                <span class="more-popup-btn-icon">🔄</span>
+                Check for Update
+            </button>
+        </div>
+    </div>
+    <div class="qr-popup" id="qr-popup" style="display:none">
+        <div class="qr-link" id="qr-link"></div>
+        <canvas id="qr-canvas"></canvas>
+        <div class="qr-steps">
+            <div class="qr-step">① Set this app to listen on <strong>0.0.0.0</strong> and <strong>start</strong>  proxy</div>
+            <div class="qr-step">② Connect PC and mobile device to the <strong>same WiFi network</strong></div>
+            <div class="qr-step">③ <strong>Scan</strong> the QR code to download and install the certificate</div>
+        </div>
+    </div>
+</div>
+<div class="overlay" id="tools-overlay">
+    <div class="tools-popup" id="tools-popup">
+        <div class="tools-popup-title">Tools</div>
+        <div class="tools-popup-content">
+            <button class="tools-popup-btn tools-btn-url" id="tools-url-encode">
+                <span class="tools-popup-btn-icon">🔗</span>
+                <span class="tools-popup-btn-text">
+                    <span class="tools-popup-btn-name">Encode and Decode</span>
+                    <span class="tools-popup-btn-desc">md5/url/unicode/base64 supported</span>
+                </span>
+            </button>
+            <button class="tools-popup-btn tools-btn-proxy" id="tools-toggle-proxy">
+                <span class="tools-popup-btn-icon">🧭</span>
+                <span class="tools-popup-btn-text">
+                    <span class="tools-popup-btn-name">Toggle System Proxy</span>
+                    <span class="tools-popup-btn-desc" id="tools-proxy-status">Status: Checking...</span>
+                </span>
+            </button>
+        </div>
+    </div>
+</div>
+<div class="overlay" id="update-overlay">
+    <div class="update-notification" id="update-notification">
+        <div class="update-header">
+            <div class="update-icon">🎉</div>
+            <h2 class="update-title">New Update Available!</h2>
+        </div>
+        <div class="update-content">
+            <p class="update-message">
+                Version <strong id="update-version">0.0.0</strong> is now available.
+            </p>
+            <p class="update-current">
+                You're currently on version <span id="current-version">0.0.0</span>
+            </p>
+        </div>
+        <div class="update-actions">
+            <button class="update-btn update-btn-primary" id="update-download-btn">
+                <span>🚀</span> Check New Features & Download
+            </button>
+            <button class="update-btn update-btn-secondary" id="update-skip-btn">
+                Skip This Version
+            </button>
+            <button class="update-btn update-btn-tertiary" id="update-snooze-btn">
+                Snooze for 21 Days
+            </button>
+        </div>
+    </div>
+</div>
+<script src="./src/renderer.js" type="module"></script>
+</body>
+</html>

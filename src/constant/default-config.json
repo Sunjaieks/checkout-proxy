@@ -1,0 +1,104 @@
+{
+  "configVersion": 3,
+  "appPort": [
+    18881
+  ],
+  "profile": [
+    {
+      "name": "9500-default",
+      "proxy": {
+        "proxyHost": "http://remote.proxy.domain:80",
+        "proxyPort": 9500,
+        "hostUsingProxy": [
+          ".aaabbbb.com",
+          ".ccc.ddd.com"
+        ],
+        "hostBypassProxy": [],
+        "httpsFixedRule": {
+          "any.https.domain:443": {
+            "target": "https://any.https.target.domain:443",
+            "customizedProxy": "any.remote.proxy.domain:9554",
+            "keepHostHeader": true,
+            "bypassCors": true
+          },
+          "any.https.domain2:443": {
+            "customizedProxy": "any.remote.proxy.domain:9554",
+            "hackRequest": ["overwriteCookiesInRequestHeaders(['Ak=0000'])"]
+          }
+        },
+        "httpFixedRule": {
+          "any.http.domain:8080": {
+            "target": "http://any.target.domain:8080",
+            "customizedProxy": "any.remote.proxy.domain:7001",
+            "keepHostHeader": true,
+            "bypassCors": true
+          }
+        }
+      }
+    },
+    {
+      "name": "prod-{{proxyPort}}-default",
+      "toBeDecided": [
+        "proxyPort=8201,8202"
+      ],
+      "substitute": {
+        "globalStgToolPort": "{{proxyPort}}"
+      },
+      "proxy": {
+        "proxyUrl": "http://{{globalProdProxyHost}}:{{proxyPort}}",
+        "globalProfile": ["stgTool"],
+        "hostUsingProxy": [
+          "*.aa.bb.cc",
+          "*.dd.ee.ff"
+        ],
+        "hostBypassProxy": [],
+        "httpsFixedRule": {},
+        "httpFixedRule": {}
+      }
+    }
+  ],
+  "globalSettings": {
+    "others": {
+      "addAgentHeader": true,
+      "recording": true
+    },
+    "substitute": {
+      "globalStgProxyHost": "stg.aa.bb.com",
+      "globalProdProxyHost": "prod.aa.bb.com"
+    },
+    "profileSet": {
+      "stgTool": {
+        "httpsFixedRule": {
+          "cc.dd.ee.com": {
+            "customizedProxy": "http://{{globalStgProxyHost}}:{{globalStgToolPort}}"
+          },
+          "ff.gg.com:443": {
+            "hackRequest": [
+              "overwriteProxyForPath({'/aa/bb':'http://{{globalStgProxyHost}}:{{globalStgToolPort}}'})"
+            ]
+          }
+        },
+        "httpFixedRule": {}
+      }
+    }
+  },
+  "reusableHackFunctions": {
+    "overwriteCookiesInResponseHeaders": [
+      "/**\n * This function overwrites the Set-Cookie header in the response headers.\n * \n * @returns {function(requestOptions, originalResponse): modifiedResponse}\n * @param newCookies array of cookies. for example: ['cookie1=0000', 'cookie2=0001']\n * Give ['cookie1='] will remove Set-Cookie for cookie 'cookie1'\n * Give ['cookie1=0000'] will overwrite Set-Cookie header for 'cookie1'\n */",
+      "newCookies=>(requestOptions,originalResponse)=>{if(!requestOptions.method||requestOptions.method.toUpperCase()==='OPTIONS')return originalResponse;const headers=originalResponse.headers;const setCookieKey=Object.keys(originalResponse.headers).find(key=>key.toLowerCase()==='set-cookie')||'Set-Cookie';let cookieArray=headers[setCookieKey]?Array.isArray(headers[setCookieKey])?[...headers[setCookieKey]]:[headers[setCookieKey]]:[];(newCookies||[]).forEach(cookie=>{if(!cookie)return;const[key,value]=cookie.split('=');const regex=new RegExp(value&&value.includes(';')?`^\\\\s*(${key}=)(.*)$`:`^\\\\s*(${key}=)([^;]*)`);for(let i=cookieArray.length-1;i>=0;i--){const oldCookie=cookieArray[i];if(regex.test(oldCookie)){if(value){cookieArray[i]=oldCookie.replace(regex,`$1${value}`)}else{cookieArray.splice(i,1)}break}}});originalResponse.headers[setCookieKey]=cookieArray;return originalResponse};"
+    ],
+    "overwriteCookiesInRequestHeaders": [
+      "/**\n * This function overwrites the Cookie header in request headers.\n * @returns {function(requestOptions): modifiedRequestOptions}\n * @param newCookies array of cookies. for example: ['cookie1=0000', 'cookie2=0001']\n * Give ['cookie1='] will remove cookie1 in Cookie header\n * Give ['cookie1=0000'] will overwrite the value of 'cookie1' in Cookie header,\n * or add 'cookie1=0000' in Cookie header in case 'cookie1' is not exist\n */",
+      "newCookies=>requestOptions=>{if(!requestOptions.method||requestOptions.method.toUpperCase()==='OPTIONS')return requestOptions;const cookieKey=Object.keys(requestOptions.headers).find(key=>key.toLowerCase()==='cookie')||'Cookie';(newCookies||[]).forEach(cookie=>{if(!cookie)return;const[key,value]=cookie.split('=');const regex=new RegExp(`(^|;\\\\s*)${key}=[^;]*`);if(requestOptions.headers[cookieKey]){if(regex.test(requestOptions.headers[cookieKey])){requestOptions.headers[cookieKey]=requestOptions.headers[cookieKey].replace(regex,value?`$1${cookie}`:'')}else if(value){requestOptions.headers[cookieKey]=`${requestOptions.headers[cookieKey]}; ${cookie}`}}else if(value){requestOptions.headers[cookieKey]=cookie}});return requestOptions};"
+    ],
+    "overwriteProxyForPath": [
+      "/**\n * This function is for specifying proxy for designated path.\n * @returns {function(requestOptions): modifiedRequestOptions}\n * @param pathProxyMap object of path to proxy map. for example: {'/path1':'http://proxy1.com:9300', '/path2':'http://proxy2.com:9301'}\n * @param defaultProxy a fallback proxy. for example: 'http://proxy3.com:9300'\n */",
+      "(pathProxyMap,defaultProxy)=>requestOptions=>{let tempPath=requestOptions.path||'/';if(!tempPath.startsWith('/')){tempPath='/'+tempPath}const entry=Object.entries(pathProxyMap).find(([key])=>tempPath.startsWith(key));if(entry){requestOptions.proxyUrl=entry[1]}else if(defaultProxy){requestOptions.proxyUrl=defaultProxy}return requestOptions};"
+    ],
+    "replacePathPrefix": [
+      "/**\n * This function is for mapping a request path to a different one.\n * @returns {function(requestOptions): modifiedRequestOptions}\n * @param pathMap object of path to proxy map. for example: {'/path1':'/path1/path2', '/path3':'/'}\n */",
+      "pathMap=>requestOptions=>{let tempPath=requestOptions.path||'/';if(!tempPath.startsWith('/')){tempPath='/'+tempPath}const entry=Object.entries(pathMap).find(([key])=>tempPath.startsWith(key));if(entry&&entry[1]!=null){requestOptions.path=tempPath.replace(entry[0],entry[1])}return requestOptions};"
+    ]
+  }
+}
+

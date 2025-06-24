@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Encode/Decode Tool</title>
+    <meta content="script-src 'self'; style-src 'self' 'unsafe-inline';" http-equiv="Content-Security-Policy">
+    <link href="./style/styles.css" rel="stylesheet">
+    <link href="./style/url-tool.css" rel="stylesheet">
+</head>
+<body class="encode-tool-body">
+<div class="url-tool-container">
+    <div class="url-tool-options">
+        <div class="option-group">
+            <div class="option-group-label">Mode</div>
+            <div class="option-group-content">
+                <div class="option-radio-group">
+                    <input type="radio" name="mode" id="mode-md5" value="md5" class="option-radio">
+                    <label for="mode-md5" class="option-radio-label">MD5 Hash</label>
+                    <input type="radio" name="mode" id="mode-url-encode" value="url-encode" class="option-radio">
+                    <label for="mode-url-encode" class="option-radio-label">URL Enc</label>
+                    <input type="radio" name="mode" id="mode-url-decode" value="url-decode" class="option-radio">
+                    <label for="mode-url-decode" class="option-radio-label">URL Dec</label>
+                    <input type="radio" name="mode" id="mode-unicode-encode" value="unicode-encode" class="option-radio">
+                    <label for="mode-unicode-encode" class="option-radio-label">Unicode Enc</label>
+                    <input type="radio" name="mode" id="mode-unicode-decode" value="unicode-decode" class="option-radio">
+                    <label for="mode-unicode-decode" class="option-radio-label">Unicode Dec</label>
+                    <input type="radio" name="mode" id="mode-base64-encode" value="base64-encode" class="option-radio">
+                    <label for="mode-base64-encode" class="option-radio-label">Base64 Enc</label>
+                    <input type="radio" name="mode" id="mode-base64-decode" value="base64-decode" class="option-radio">
+                    <label for="mode-base64-decode" class="option-radio-label">Base64 Dec</label>
+                </div>
+            </div>
+        </div>
+        <div class="options-separator"></div>
+        <div class="option-group" id="encoding-options">
+            <div class="option-group-label">Encoding</div>
+            <div class="option-group-content">
+                <div class="option-radio-group">
+                    <input type="radio" name="encoding" id="encoding-utf8" value="utf-8" class="option-radio">
+                    <label for="encoding-utf8" class="option-radio-label">UTF-8</label>
+                    <input type="radio" name="encoding" id="encoding-eucjp" value="euc-jp" class="option-radio">
+                    <label for="encoding-eucjp" class="option-radio-label">EUC-JP</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="option-group" id="url-options">
+            <div class="option-group-label">URL Options</div>
+            <div class="option-checkbox-group">
+                <div class="option-checkbox-item">
+                    <input type="checkbox" id="option-space-plus" value="spaceAsPlus">
+                    <label for="option-space-plus">Encode space as +</label>
+                </div>
+                <div class="option-checkbox-item">
+                    <input type="checkbox" id="option-component-only" value="componentOnly" checked>
+                    <label for="option-component-only">Convert url component</label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="url-tool-content">
+        <div class="text-area-group">
+            <div class="text-area-label">
+                <span class="text-area-label-text">Input</span>
+                <span class="text-area-label-action" id="clear-input">Clear</span>
+            </div>
+            <textarea id="input-text" class="url-tool-textarea" placeholder="Enter text to encode or decode..."></textarea>
+        </div>
+
+        <div class="url-tool-actions">
+            <button class="url-tool-btn url-tool-btn-primary" id="convert-btn">Convert</button>
+            <button class="url-tool-btn url-tool-btn-secondary" id="swap-btn">Swap</button>
+        </div>
+
+        <div class="text-area-group">
+            <div class="text-area-label">
+                <span class="text-area-label-text">Output</span>
+                <span class="text-area-label-action" id="copy-output">Copy</span>
+            </div>
+            <textarea id="output-text" class="url-tool-textarea output" placeholder="Result will appear here..." readonly></textarea>
+        </div>
+    </div>
+
+    <div class="status-message" id="status-message"></div>
+
+    <div class="url-tool-footer">
+        <button class="url-tool-btn url-tool-btn-tertiary" id="close-btn">Close</button>
+    </div>
+</div>
+<script src="./src/url-tool-renderer.js" type="module"></script>
+</body>
+</html>
