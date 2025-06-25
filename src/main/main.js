@@ -15,8 +15,10 @@ let httpsServer;
 let currentConfig;
 let activeProfileIndex = -9;
 
-const CONFIG_FILE_NAME = 'checkout-proxy-config-v1.json';
 const userDataPath = app.getPath('userData');
+const CONFIG_FILE_NAME = 'checkout-proxy-config-v1.json';
+const USER_DEFAULT_CONFIG_FILE_NAME = 'checkout-proxy-user-default-config-v1.json';
+const userDefaultConfigFilePath = path.join(userDataPath, USER_DEFAULT_CONFIG_FILE_NAME);
 const configFilePath = path.join(userDataPath, CONFIG_FILE_NAME);
 const CONFIG_OUTDATED_MESSAGE = 'Configuration is outdated. Please use Edit Config -> Reset to Default to update your configuration.';
 
@@ -418,30 +420,60 @@ ipcMain.on('start-proxy-profile', async (event, profileIndex) => {
     }
 });
 
-ipcMain.handle('reset-config-to-default', async () => {
+ipcMain.handle('open-reset-option', async () => {
     try {
-        const defaultConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
-        // comment the logic of reset and apply immediately
-        // saveConfig();
-        // await stopServers();
-        // activeProfileIndex = -9;
-        // if (mainWindow && !mainWindow.isDestroyed()) {
-        //     mainWindow.webContents.send('config-updated', currentConfig, activeProfileIndex);
-        //     mainWindow.webContents.send('proxy-status-update', {
-        //         httpPort: currentConfig.appPort[0],
-        //         httpsPort: currentConfig.appPort[1],
-        //         activeProfileIndex,
-        //         message: 'Configuration reset to default. Proxy stopped.'
-        //     });
-        // }
-        logInfo('Configuration has been reset to default.');
-        return {success: true, defaultConfig};
-
+        const focusedWindow = BrowserWindow.getFocusedWindow() || editorWindow;
+        const options = {
+            type: 'question',
+            buttons: ['Reset to Original Default Config', 'Reset to User Default Config', 'Save as User Default Config', 'Cancel'],
+            defaultId: 3,
+            title: 'reset option',
+            message: 'Please choose an action:',
+        };
+        const {response} = await dialog.showMessageBox(focusedWindow, options);
+        return response;
     } catch (error) {
-        logError('Failed to reset configuration to default:', error);
+        logError('[open-reset-option] Failed to show choice dialog:', error);
+        return -1;
+    }
+});
+
+ipcMain.handle('execute-reset-option', async (event, action, editedConfig) => {
+    try {
+        if (action === 0) {
+            const defaultConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+            logInfo('Configuration has been reset to Original Default Config.');
+            return {
+                success: true,
+                defaultConfig,
+                message: 'Reset to Original Default Config successfully. You can now edit it or click [Save and Close].'
+            };
+        } else if (action === 1) {
+            if (!fs.existsSync(userDefaultConfigFilePath)) {
+                return {
+                    success: false,
+                    error: 'Please do [Save as User Default Config] first, then you can reset to it.'
+                };
+            }
+            const defaultConfigString = fs.readFileSync(userDefaultConfigFilePath, 'utf-8');
+            const defaultConfig = JSON.parse(defaultConfigString);
+            logInfo('Configuration has been reset to User Default Config.');
+            return {
+                success: true,
+                defaultConfig,
+                message: 'Reset to User Default Config successfully. You can now edit it or click [Save and Close].'
+            };
+        } else if (action === 2) {
+            fs.writeFileSync(userDefaultConfigFilePath, JSON.stringify(editedConfig, null, 2));
+            logInfo('User Default Configuration saved to:', userDefaultConfigFilePath);
+            return {success: true, message: 'Save as User Default Config successfully.'};
+        }
+    } catch (error) {
+        logError(`[execute-reset-option] Action ${action} failed due to:`, error);
         return {success: false, error: error.message};
     }
 });
+
 
 ipcMain.on('open-external-link', (event, url) => {
     shell.openExternal(url).catch(err => logError('Failed to open external link:', err));

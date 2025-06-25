@@ -185,7 +185,7 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
                 if (gethttpsFixedRule(profile)[`${hostname}:${port}`]) {
                     port = httpsPort;
                     hostname = 'localhost';
-                } else if (port === '443' && inHostUsingProxy(profile, hostname) && !inHostBypassProxy(profile, hostname)) {
+                } else if (inHostUsingProxy(profile, hostname) && !inHostBypassProxy(profile, hostname)) {
                     port = httpsPort;
                     hostname = 'localhost';
                 }
@@ -312,7 +312,7 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
         httpsServer.on('request', (clientReq, clientRes) => {
             const originalHost = clientReq.headers['host'];
             let targetHost = originalHost?.split(':')[0] || originalHost;
-            let targetPort = '443';
+            let targetPort = originalHost?.split(':')[1] || '443';
             let httpOrHttps;
             let agentHost;
             let agentPort;

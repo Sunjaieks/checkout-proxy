@@ -28,20 +28,25 @@ document.getElementById('btnSaveAndClose').addEventListener('click', async () =>
     }
 });
 
+const RESET_TO_ORIGINAL_CONFIRM_MESSAGE = 'Are you sure to reset to initial Original Default Config?\nYou still need to click [Save and Close] to apply the changes'
+const RESET_TO_USER_DEFAULT_CONFIRM_MESSAGE = 'Are you sure to reset to User Default Config?\nYou still need to click [Save and Close] to apply the changes'
+const SET_USER_DEFAULT_CONFIRM_MESSAGE = 'Are you sure to set User Default Config?\nNext time you can reset to User Default Config which is different from Original Default Config.'
+
 document.getElementById('btnReset').addEventListener('click', async () => {
-    const confirmed = window.confirm( // Standard browser confirm dialog
-        "Are you sure to reset?\nThis will overwrite your edited configuration with the newest default.\n" +
-        "You still need to click [Save and Close] to apply the changes"
-    );
+    const response = await window.electronAPI.openResetOption();
+    if (response < 0 || response === 3) return;
+
+    const confirmMessage = response === 0 ? RESET_TO_ORIGINAL_CONFIRM_MESSAGE : response === 1 ? RESET_TO_USER_DEFAULT_CONFIRM_MESSAGE : SET_USER_DEFAULT_CONFIRM_MESSAGE;
+    const confirmed = window.confirm(confirmMessage);
     if (confirmed) {
-        messageEl.textContent = ''; // Clear previous errors
+        messageEl.textContent = '';
         try {
-            const result = await window.electronAPI.resetConfigToDefault();
+            const result = await window?.electronAPI.executeResetOption(response, jsonEditorEl.value);
+            if (!result) return;
             if (result.success) {
-                jsonEditorEl.value = JSON.stringify(result.defaultConfig, null, 2);
+                if (result.defaultConfig) jsonEditorEl.value = JSON.stringify(result.defaultConfig, null, 2);
                 messageEl.style.color = 'green';
-                messageEl.textContent = 'Reset to default configuration successfully. You can now edit it or click [Save and Close].';
-                // window.close(); // Close editor window on successful reset
+                messageEl.textContent = result.message || '';
             } else {
                 messageEl.style.color = 'red';
                 messageEl.textContent = `Error: ${result.error || 'Failed to reset configuration.'}`;
@@ -52,7 +57,6 @@ document.getElementById('btnReset').addEventListener('click', async () => {
         }
     }
 });
-
 
 document.getElementById('btnAbort').addEventListener('click', () => {
     window.close();
