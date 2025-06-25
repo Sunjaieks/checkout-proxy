@@ -6,7 +6,8 @@ const messageEl = document.getElementById('infoOrErrorMessage');
 window.electronAPI.loadConfigForEditing(async ({currentConfig, defaultConfig}) => {
     if (isConfigVersionOutdated(currentConfig, defaultConfig)) {
         messageEl.style.color = 'red';
-        messageEl.textContent = `Config version outdated! This might cause potential issues. Please backup your current config and click [Reset to Default] -> [Save and Close] to retrieve the newest default config and apply.`;
+        messageEl.textContent = 'Config version outdated! This might cause potential issues. Please backup your current config and click [Reset Option] ' +
+            '-> [Reset to Original Default Config] -> [OK] -> [Save and Close] to retrieve the newest default config and apply.';
     }
     jsonEditorEl.value = JSON.stringify(currentConfig, null, 2);
 });
@@ -14,7 +15,6 @@ window.electronAPI.loadConfigForEditing(async ({currentConfig, defaultConfig}) =
 document.getElementById('btnSaveAndClose').addEventListener('click', async () => {
     const newConfigJson = jsonEditorEl.value;
     try {
-        JSON.parse(newConfigJson); // Validate JSON
         const result = await window.electronAPI.saveEditedConfig(newConfigJson);
         if (result.success) {
             window.close();

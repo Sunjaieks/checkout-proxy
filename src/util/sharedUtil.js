@@ -10,3 +10,16 @@ export const isLocalHost = (hostname) => hostname?.includes('localhost') || host
 export const isConfigVersionOutdated = (currentConfig, defaultConfig) => Number.isInteger(defaultConfig.configVersion) && (!Number.isInteger(currentConfig?.configVersion) || currentConfig.configVersion < defaultConfig.configVersion);
 export const isPortInvalid = (config) => !config.appPort || !Array.isArray(config.appPort) || config.appPort.length !== 2 ||
     !Number.isInteger(config.appPort[0]) || !Number.isInteger(config.appPort[1])
+export const checkConfig = (config) => {
+    const configObj = JSON.parse(config);
+    if (isPortInvalid(configObj)) {
+        throw new Error("Invalid appPort format. Must be an array of two numbers.");
+    }
+    if (!Array.isArray(configObj.profile)) {
+        throw new Error("Invalid profile format. Must be an array.");
+    }
+    if (configObj.profile.find(item => !item?.name)) {
+        throw new Error("Invalid profile name. Name is required for each profile.");
+    }
+    return configObj
+}

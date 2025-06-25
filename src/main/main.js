@@ -1,6 +1,6 @@
 import {loadRootCA, startServers} from "../proxy/proxy-server.js";
 import DEFAULT_CONFIG from "../constant/default-config.json" with {type: 'json'};
-import {isConfigVersionOutdated, isPortInvalid} from "../util/sharedUtil.js";
+import {checkConfig, isConfigVersionOutdated, isPortInvalid} from "../util/sharedUtil.js";
 import {getResourceFilePath, logError, logInfo, logWarn} from "../util/nodeUtil";
 import {app, BrowserWindow, ipcMain, dialog, shell} from 'electron';
 import path from 'path';
@@ -287,19 +287,7 @@ ipcMain.on('open-config-editor', () => {
 
 ipcMain.handle('save-edited-config', async (event, newConfigJson) => {
     try {
-        const newConfig = JSON.parse(newConfigJson);
-        // Basic validation (can be more thorough)
-        if (isPortInvalid(newConfig)) {
-            throw new Error("Invalid appPort format. Must be an array of two numbers.");
-        }
-        if (!Array.isArray(newConfig.profile)) {
-            throw new Error("Invalid profile format. Must be an array.");
-        }
-        if (newConfig.profile.find(item => !item?.name)) {
-            throw new Error("Invalid profile name. Name is required for each profile.");
-        }
-
-        currentConfig = newConfig;
+        currentConfig = checkConfig(newConfigJson);
         saveConfig(); // This will also send 'config-updated' to mainWindow
         await stopServers(); // Stop current servers
         activeProfileIndex = -9; // Reset active profile, user needs to pick one
@@ -326,17 +314,7 @@ ipcMain.on('import-config', async () => {
         try {
             const filePath = result.filePaths[0];
             const fileData = fs.readFileSync(filePath, 'utf-8');
-            const newConfig = JSON.parse(fileData);
-
-            // Basic validation
-            if (isPortInvalid(newConfig)) {
-                throw new Error("Invalid appPort format in imported file.");
-            }
-            if (!newConfig.profile || !Array.isArray(newConfig.profile)) {
-                throw new Error("Invalid profile format in imported file.");
-            }
-
-            currentConfig = newConfig;
+            currentConfig = checkConfig(fileData);
             saveConfig(); // Overwrites the app's managed JSON and sends 'config-updated'
             await stopServers();
             activeProfileIndex = -9;
@@ -464,7 +442,8 @@ ipcMain.handle('execute-reset-option', async (event, action, editedConfig) => {
                 message: 'Reset to User Default Config successfully. You can now edit it or click [Save and Close].'
             };
         } else if (action === 2) {
-            fs.writeFileSync(userDefaultConfigFilePath, JSON.stringify(editedConfig, null, 2));
+            const configObj = checkConfig(editedConfig);
+            fs.writeFileSync(userDefaultConfigFilePath, JSON.stringify(configObj, null, 2));
             logInfo('User Default Configuration saved to:', userDefaultConfigFilePath);
             return {success: true, message: 'Save as User Default Config successfully.'};
         }
