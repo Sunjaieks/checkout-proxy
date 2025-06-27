@@ -28,6 +28,8 @@ Additionally, there are some special features like: bypass cors restriction(expe
 2.  **Browser Configuration:**
     *   Configure your browser or system to use `127.0.0.1:8001` (replace `8001` if you've changed specified config of Checkout Proxy) as its HTTP proxy.
         *  it's recommended to use a browser extension like [FoxyProxy](https://addons.mozilla.org/en-US/firefox/addon/foxyproxy-standard/) or [SwitchyOmega](https://chromewebstore.google.com/detail/proxy-switchyomega-3-zero/pfnededegaaopdmhkdmcofjmoldfiped?pli=1).
+    *   **Safari on MacOS**: you need to set both `Web Proxy (HTTP)` and `Secure Web Proxy (HTTPS)` from `System settings` -> `Wi-Fi` -> `Details` -> `Proxies`. You must set system proxy before connecting to VPN, otherwise proxy won't work properly.
+    *   **Safari or Ichiba APP on IOS Simulator:** Aside from setting system proxy and connecting to VPN, You also have to add root certificate for simulator by running the following command in terminal: `xcrun simctl keychain booted add-root-cert ~/Downloads/checkout-proxy-rootCA.crt`.
            
 ## Using the Application
 1.  **Main Window:**
