@@ -4,8 +4,11 @@ import {defineConfig, externalizeDepsPlugin} from 'electron-vite';
 
 
 export default defineConfig(({command}) => {
-    fs.rmSync('dist-electron', { recursive: true, force: true })
+    fs.rmSync('dist-electron', {recursive: true, force: true})
     return {
+        esbuild: {
+            drop: ['console', 'debugger'],
+        },
         main: {
             plugins: [externalizeDepsPlugin()],
             build: {
