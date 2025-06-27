@@ -3,16 +3,17 @@ import {resolve} from 'path';
 import {defineConfig, externalizeDepsPlugin} from 'electron-vite';
 
 
-export default defineConfig(({command}) => {
+export default defineConfig(({command, mode}) => {
     fs.rmSync('dist-electron', {recursive: true, force: true})
+    const isProduction = mode === 'production' || command === 'build';
     return {
         esbuild: {
-            drop: ['console', 'debugger'],
+            drop: isProduction ? [] : ['console', 'debugger'],
         },
         main: {
             plugins: [externalizeDepsPlugin()],
             build: {
-                minify: true,
+                minify: isProduction,
                 rollupOptions: {
                     input: {
                         main: resolve(__dirname, 'src/main/main.js')
@@ -22,7 +23,7 @@ export default defineConfig(({command}) => {
         },
         preload: {
             build: {
-                minify: true,
+                minify: isProduction,
                 rollupOptions: {
                     input: {
                         preload: resolve(__dirname, 'src/preload/preload.js')
@@ -32,7 +33,7 @@ export default defineConfig(({command}) => {
         },
         renderer: {
             build: {
-                minify: true,
+                minify: isProduction,
                 rollupOptions: {
                     input: {
                         main: resolve(__dirname, 'src/renderer/index.html'),

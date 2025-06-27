@@ -28,33 +28,25 @@ document.getElementById('btnSaveAndClose').addEventListener('click', async () =>
     }
 });
 
-const RESET_TO_ORIGINAL_CONFIRM_MESSAGE = 'Are you sure to reset to initial Original Default Config?\nYou still need to click [Save and Close] to apply the changes'
-const RESET_TO_USER_DEFAULT_CONFIRM_MESSAGE = 'Are you sure to reset to User Default Config?\nYou still need to click [Save and Close] to apply the changes'
-const SET_USER_DEFAULT_CONFIRM_MESSAGE = 'Are you sure to set User Default Config?\nNext time you can reset to User Default Config which is different from Original Default Config.'
-
 document.getElementById('btnReset').addEventListener('click', async () => {
-    const response = await window.electronAPI.openResetOption();
+    const response = await window.electronAPI.openResetOptions();
     if (response < 0 || response === 3) return;
 
-    const confirmMessage = response === 0 ? RESET_TO_ORIGINAL_CONFIRM_MESSAGE : response === 1 ? RESET_TO_USER_DEFAULT_CONFIRM_MESSAGE : SET_USER_DEFAULT_CONFIRM_MESSAGE;
-    const confirmed = window.confirm(confirmMessage);
-    if (confirmed) {
-        messageEl.textContent = '';
-        try {
-            const result = await window?.electronAPI.executeResetOption(response, jsonEditorEl.value);
-            if (!result) return;
-            if (result.success) {
-                if (result.defaultConfig) jsonEditorEl.value = JSON.stringify(result.defaultConfig, null, 2);
-                messageEl.style.color = 'green';
-                messageEl.textContent = result.message || '';
-            } else {
-                messageEl.style.color = 'red';
-                messageEl.textContent = `Error: ${result.error || 'Failed to reset configuration.'}`;
-            }
-        } catch (e) {
+    messageEl.textContent = '';
+    try {
+        const result = await window?.electronAPI.executeResetOption(response, jsonEditorEl.value);
+        if (!result) return;
+        if (result.success) {
+            if (result.defaultConfig) jsonEditorEl.value = JSON.stringify(result.defaultConfig, null, 2);
+            messageEl.style.color = 'green';
+            messageEl.textContent = result.message || '';
+        } else {
             messageEl.style.color = 'red';
-            messageEl.textContent = `Error during reset: ${e.message}`;
+            messageEl.textContent = `Error: ${result.error || 'Failed to reset configuration.'}`;
         }
+    } catch (e) {
+        messageEl.style.color = 'red';
+        messageEl.textContent = `Error during reset: ${e.message}`;
     }
 });
 

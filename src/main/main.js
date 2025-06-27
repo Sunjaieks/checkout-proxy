@@ -398,20 +398,20 @@ ipcMain.on('start-proxy-profile', async (event, profileIndex) => {
     }
 });
 
-ipcMain.handle('open-reset-option', async () => {
+ipcMain.handle('open-reset-options', async () => {
     try {
         const focusedWindow = BrowserWindow.getFocusedWindow() || editorWindow;
         const options = {
             type: 'question',
-            buttons: ['Reset to Original Default Config', 'Reset to User Default Config', 'Save as User Default Config', 'Cancel'],
+            buttons: ['Reset text area to Original Default Config', 'Reset text area to User Default Config', 'Save current text as User Default Config', 'Cancel'],
             defaultId: 3,
-            title: 'reset option',
-            message: 'Please choose an action:',
+            title: 'reset options',
+            message: 'Please choose an option:',
         };
         const {response} = await dialog.showMessageBox(focusedWindow, options);
         return response;
     } catch (error) {
-        logError('[open-reset-option] Failed to show choice dialog:', error);
+        logError('[open-reset-options] Failed to show choice dialog:', error);
         return -1;
     }
 });

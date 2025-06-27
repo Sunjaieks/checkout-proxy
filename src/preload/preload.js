@@ -22,7 +22,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     openExternalLink: (url) => ipcRenderer.send('open-external-link', url),
     downloadRootCA: () => ipcRenderer.send('download-root-ca'),
-    openResetOption: () => ipcRenderer.invoke('open-reset-option'),
+    openResetOptions: () => ipcRenderer.invoke('open-reset-options'),
     executeResetOption: (action, editedConfig) => ipcRenderer.invoke('execute-reset-option', action, editedConfig),
     getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 });
