@@ -424,7 +424,7 @@ ipcMain.handle('execute-reset-option', async (event, action, editedConfig) => {
             return {
                 success: true,
                 defaultConfig,
-                message: 'Reset to Original Default Config successfully. You can now edit it or click [Save and Close].'
+                message: 'Text area is reset to Original Default Config. You can now edit it or click [Save and Close].'
             };
         } else if (action === 1) {
             if (!fs.existsSync(userDefaultConfigFilePath)) {
@@ -439,7 +439,7 @@ ipcMain.handle('execute-reset-option', async (event, action, editedConfig) => {
             return {
                 success: true,
                 defaultConfig,
-                message: 'Reset to User Default Config successfully. You can now edit it or click [Save and Close].'
+                message: 'Text area is reset to User Default Config. You can now edit it or click [Save and Close].'
             };
         } else if (action === 2) {
             const configObj = checkConfig(editedConfig);
