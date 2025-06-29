@@ -4,5 +4,34 @@
     8001,
     8002
   ],
-  "profile": []
+  "profile": [
+    {
+      "name": "9500-default",
+      "proxy": {
+        "proxyHost": "remote.proxy.domain",
+        "proxyPort": 9500,
+        "hostUsingProxy": [
+          ".aaabbbb.com",
+          ".ccc.ddd.com"
+        ],
+        "hostBypassProxy": [],
+        "httpsFixedRule": {
+          "any.https.domain:443": {
+            "target": "https://any.https.target.domain:443",
+            "customizedProxy": "any.remote.proxy.domain:9504",
+            "keepHostHeader": true,
+            "bypassCors": true
+          }
+        },
+        "httpFixedRule": {
+          "any.http.domain:8080": {
+            "target": "http://any.target.domain:8080",
+            "customizedProxy": "any.remote.proxy.domain:7001",
+            "keepHostHeader": true,
+            "bypassCors": true
+          }
+        }
+      }
+    }
+  ]
 }
