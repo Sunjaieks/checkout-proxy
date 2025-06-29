@@ -146,8 +146,8 @@ document.getElementById('btnDirectConnect').addEventListener('click', debounce((
     window.electronAPI.startProxyProfile(-1);
 }));
 
-document.getElementById('btnInstructions').addEventListener('click', debounce(() => {
-    window.electronAPI.openInstructions();
+document.getElementById('btnHelp').addEventListener('click', debounce(() => {
+    window.electronAPI.openHelp();
 }));
 
 document.getElementById('btnEditConfig').addEventListener('click', debounce(() => {

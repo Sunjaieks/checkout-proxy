@@ -8,7 +8,7 @@ import fs from 'fs';
 
 let mainWindow;
 let editorWindow;
-let instructionsWindow;
+let helpWindow;
 
 let httpServer;
 let httpsServer;
@@ -145,7 +145,7 @@ function createMainWindow(firstRun) {
     mainWindow.on('closed', () => {
         mainWindow = null;
         if (editorWindow) editorWindow.close();
-        if (instructionsWindow) instructionsWindow.close();
+        if (helpWindow) helpWindow.close();
     });
 
     mainWindow.webContents.on('did-finish-load', () => {
@@ -191,15 +191,15 @@ ipcMain.handle('get-app-version', () => {
     return app.getVersion();
 });
 
-ipcMain.on('open-instructions', () => {
-    if (instructionsWindow) {
-        instructionsWindow.focus();
+ipcMain.on('open-help', () => {
+    if (helpWindow) {
+        helpWindow.focus();
         return;
     }
-    instructionsWindow = new BrowserWindow({
+    helpWindow = new BrowserWindow({
         width: 670,
         height: 600,
-        title: 'Checkout-Proxy Instructions',
+        title: 'Checkout-Proxy Help',
         fullscreenable: false,
         autoHideMenuBar: true,
         parent: mainWindow,
@@ -210,16 +210,16 @@ ipcMain.on('open-instructions', () => {
             nodeIntegration: false
         }
     });
-    attachFileOrUrlToWindow(instructionsWindow, 'instructions.html');
-    instructionsWindow.on('closed', () => instructionsWindow = null);
+    attachFileOrUrlToWindow(helpWindow, 'help.html');
+    helpWindow.on('closed', () => helpWindow = null);
 
     // Send markdown content
-    instructionsWindow.webContents.on('did-finish-load', () => {
+    helpWindow.webContents.on('did-finish-load', () => {
         try {
             const mdContent = fs.readFileSync(getResourceFilePath('README.md'), 'utf-8');
-            instructionsWindow.webContents.send('markdown-content', mdContent);
+            helpWindow.webContents.send('markdown-content', mdContent);
         } catch (e) {
-            instructionsWindow.webContents.send('markdown-content', `# Error loading instructions, error:${e.message}\nCould not read README.md`);
+            helpWindow.webContents.send('markdown-content', `# Error loading help content, error:${e.message}\nCould not read README.md`);
             logError("Error reading README.md:", e);
         }
     });

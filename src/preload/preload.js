@@ -2,7 +2,7 @@ const {contextBridge, ipcRenderer} = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
     // Main window to Main process
-    openInstructions: () => ipcRenderer.send('open-instructions'),
+    openHelp: () => ipcRenderer.send('open-help'),
     openConfigEditor: () => ipcRenderer.send('open-config-editor'),
     importConfig: () => ipcRenderer.send('import-config'),
     exportConfig: () => ipcRenderer.send('export-config'),
@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     loadConfigForEditing: (callback) => ipcRenderer.on('load-config-for-editing', (_event, value) => callback(value)),
     saveEditedConfig: (jsonString) => ipcRenderer.invoke('save-edited-config', jsonString),
 
-    // Instructions window to Main process
+    // Help window to Main process
     getMarkdownContent: (callback) => ipcRenderer.on('markdown-content', (_event, content) => callback(content)),
 
     // Main process to Renderer(s)

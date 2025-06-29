@@ -20,7 +20,7 @@ Additionally, there are some special features like: bypass cors restriction(expe
 
 ## Before Using
 1.  **Download and Trust Root CA:**
-    *   Download root CA certificate by opening [Instructions] window of this APP and then click download link on the top of the window
+    *   Download root CA certificate by opening [Help] window of this APP and then click download link on the top of the window
     *   Import `checkout-proxy-rootCA.crt` into your operating system's trusted root certificate authorities store.
         *   **macOS:** Open any command line tool. execute `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/Downloads/checkout-proxy-rootCA.crt` (replace `~/Downloads/` with the actual path to the certificate). And then enter your password when prompted.
         *   **Windows:** double click `checkout-proxy-rootCA.crt` you downloaded --> click `Install Certificate` --> click `Next` --> select `Place all certificates in the following store` --> click `Browse...` --> select `Trusted Root Certification Authorities` --> click `OK` --> click `Next` --> click `Finish`. You may need to restart your browser.
