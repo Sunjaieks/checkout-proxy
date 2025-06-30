@@ -27,6 +27,7 @@
   "build": {
     "appId": "sunjaieks.checkoutproxy",
     "productName": "CheckoutProxy",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
     "files": [
       "out/**/*"
     ],
@@ -76,7 +77,6 @@
     },
     "nsis": {
       "oneClick": false,
-      "artifactName": "${productName}-${version}-${arch}.${ext}",
       "allowToChangeInstallationDirectory": true
     }
   },
