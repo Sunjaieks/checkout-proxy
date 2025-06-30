@@ -79,7 +79,7 @@ function generateServerCertificate(hostname) {
         const cachedCert = certCache.get(hostname)[0];
         const cachedDate = certCache.get(hostname)[1];
         const thresholdDate = new Date();
-        thresholdDate.setDate(thresholdDate.getDate() - 100);
+        thresholdDate.setDate(thresholdDate.getDate() - 60);
         if (cachedDate > thresholdDate) {
             return cachedCert;
         } else {
@@ -98,10 +98,10 @@ function generateServerCertificate(hostname) {
     cert.publicKey = keys.publicKey;
     cert.serialNumber = generateSerialNumber();
     const now = new Date();
-    cert.validity.notBefore = now;
-    cert.validity.notBefore.setDate(now.getDate() - 180);
-    cert.validity.notAfter = new Date();
-    cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 1);
+    cert.validity.notBefore = new Date(now.getTime());
+    cert.validity.notBefore.setDate(now.getDate() - 120);
+    cert.validity.notAfter = new Date(now.getTime());
+    cert.validity.notAfter.setDate(now.getDate() + 210);
 
     const attrs = [{name: 'commonName', value: hostname}];
     cert.setSubject(attrs);
