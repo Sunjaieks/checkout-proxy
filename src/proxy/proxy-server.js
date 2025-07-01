@@ -24,12 +24,13 @@ import fs from "fs";
 import {addShutdown} from "./http-shutdown.js";
 import forge from "node-forge";
 import tls from 'node:tls';
+import {LRUCache} from "./cache";
 
 let rootCA;
 let rootCAKey;
 let rootCAString;
 let rootCAKeyString;
-const certCache = new Map();
+const certCache = new LRUCache(20000, 1000 * 3600 * 240); // 20,000 entries, 10 day TTL
 
 const SERVER_REQUEST_TIMEOUT_SEC = 600; // seconds
 
@@ -75,17 +76,7 @@ function generateSerialNumber() {
 
 function generateServerCertificate(hostname) {
     const cached = certCache.get(hostname)
-    if (cached) {
-        const cachedCert = certCache.get(hostname)[0];
-        const cachedDate = certCache.get(hostname)[1];
-        const thresholdDate = new Date();
-        thresholdDate.setDate(thresholdDate.getDate() - 60);
-        if (cachedDate > thresholdDate) {
-            return cachedCert;
-        } else {
-            certCache.delete(hostname);
-        }
-    }
+    if (cached) return cached;
 
     if (!rootCAKey || !rootCA) {
         logError('Root CA not loaded. Cannot generate certificate for', hostname);
@@ -99,9 +90,9 @@ function generateServerCertificate(hostname) {
     cert.serialNumber = generateSerialNumber();
     const now = new Date();
     cert.validity.notBefore = new Date(now.getTime());
-    cert.validity.notBefore.setDate(now.getDate() - 120);
+    cert.validity.notBefore.setDate(now.getDate() - 20);
     cert.validity.notAfter = new Date(now.getTime());
-    cert.validity.notAfter.setDate(now.getDate() + 210);
+    cert.validity.notAfter.setDate(now.getDate() + 20);
 
     const attrs = [{name: 'commonName', value: hostname}];
     cert.setSubject(attrs);
@@ -134,7 +125,7 @@ function generateServerCertificate(hostname) {
         cert: forge.pki.certificateToPem(cert),
     };
 
-    certCache.set(hostname, [tlsCert, new Date()]);
+    certCache.set(hostname, tlsCert);
     logInfo(`Generated certificate for ${hostname}`);
     return tlsCert;
 }
