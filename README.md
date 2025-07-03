@@ -11,8 +11,8 @@ Additionally, there are some special features like: bypass cors restriction(expe
 ## Install the Application
 1.  **Download the Application:**
     *   Download the latest release. Choose the appropriate version for your operating system:
-        *   **macOS:** `Checkout-Proxy-macOS-x64.dmg`
-        *   **Windows:** `Checkout-Proxy-Windows-x64.exe`
+        *   **macOS:** `Checkout-Proxy-1.0.0-arm64.dmg`
+        *   **Windows:** `Checkout-Proxy-1.0.0-x64.exe`
 
 2.  **Install the Application:**
     *   **macOS:** Open the downloaded `.dmg` file and drag the `Checkout-Proxy.app` to the Applications folder. Before you start the application for the first time, you need to run the following command in terminal: `sudo xattr -r -d com.apple.quarantine /Applications/CheckoutProxy.app` and enter your password when prompted. That's because I am not a registered Apple developer, macOS will block the application from running.
@@ -23,6 +23,11 @@ Additionally, there are some special features like: bypass cors restriction(expe
     *   Download root CA certificate by opening [Help] window of this APP and then click download link on the top of the window
     *   Import `checkout-proxy-rootCA.crt` into your operating system's trusted root certificate authorities store.
         *   **macOS:** Open any command line tool. execute `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/Downloads/checkout-proxy-rootCA.crt` (replace `~/Downloads/` with the actual path to the certificate). And then enter your password when prompted.
+            * or you can import the certificate manually:
+                *   Open `Keychain Access` application. From MacOS15, Apple moved `Keychain Access` from `/System/Applications/Utilities/Keychain\ Access.app` to another place, you can open it by executing `open /System/Library/CoreServices/Applications/Keychain\ Access.app` in command line tool.
+                *   Drag and drop `checkout-proxy-rootCA.crt` into the `System` keychain.
+                *   Find the certificate in the list, double-click it.
+                *   Expand the `Trust` section, set `When using this certificate` to `Always Trust`, and close the dialog.
         *   **Windows:** double click `checkout-proxy-rootCA.crt` you downloaded --> click `Install Certificate` --> click `Next` --> select `Place all certificates in the following store` --> click `Browse...` --> select `Trusted Root Certification Authorities` --> click `OK` --> click `Next` --> click `Finish`. You may need to restart your browser.
 
 2.  **Browser Configuration:**
