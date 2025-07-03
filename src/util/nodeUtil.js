@@ -4,6 +4,7 @@ import {app} from "electron";
 
 export const getDirname = (metaUrl) => path.dirname(fileURLToPath(metaUrl));
 export const getFilename = (metaUrl) => fileURLToPath(metaUrl);
+export const isKeepAlive = (clientReq) => clientReq.headers['connection']?.toLowerCase().trim() === 'keep-alive' || clientReq.headers['keep-alive'] || clientReq.headers['proxy-connection']?.toLowerCase().trim() === 'keep-alive';
 export const getResourceFilePath = (fileNameStartFromAppRoot) => {
     return path.join(app.isPackaged ? process.resourcesPath : app.getAppPath(), fileNameStartFromAppRoot);
 }

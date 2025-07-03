@@ -7,6 +7,8 @@ import {once} from "node:events";
 import tls from "node:tls";
 import assert from "node:assert";
 
+const INTERNAL = Symbol('AgentBaseInternalState');
+
 export class CustomHttpAgent extends http.Agent {
     static parseProxyResponse(socket) {
         return new Promise((resolve, reject) => {
@@ -90,15 +92,32 @@ export class CustomHttpAgent extends http.Agent {
                     buffered,
                 });
             }
+
             socket.on('error', onerror);
             socket.on('end', onend);
             read();
         });
     }
 
-    constructor(protocol, host, port) {
-        super();
-        this.INTERNAL = { protocol };
+    static setServernameFromNonIpHost = (
+        options
+    ) => {
+        if (
+            options.servername === undefined &&
+            options.host &&
+            !net.isIP(options.host)
+        ) {
+            return {
+                ...options,
+                servername: options.host,
+            };
+        }
+        return options;
+    };
+
+    constructor(protocol, host, port, opts) {
+        super(opts);
+        this[INTERNAL] = {protocol};
         this.connectOpts = {
             ALPNProtocols: ['http/1.1'],
             host,
@@ -107,7 +126,7 @@ export class CustomHttpAgent extends http.Agent {
     }
 
     isSecureEndpoint() {
-        return this.INTERNAL.protocol === 'https:';
+        return this[INTERNAL].protocol === 'https:';
     }
 
     // In order to support async signatures in `connect()` and Node's native
@@ -130,7 +149,7 @@ export class CustomHttpAgent extends http.Agent {
             // @ts-expect-error `sockets` is readonly in `@types/node`
             this.sockets[name] = [];
         }
-        const fakeSocket = new net.Socket({ writable: false });
+        const fakeSocket = new net.Socket({writable: false});
         this.sockets[name].push(fakeSocket);
         // @ts-expect-error `totalSocketCount` isn't defined in `@types/node`
         this.totalSocketCount++;
@@ -163,6 +182,47 @@ export class CustomHttpAgent extends http.Agent {
         return super.getName(options);
     }
 
+    addRequest(...args) {
+        const [req, opts] = args;
+        if (!this.isSecureEndpoint()) {
+            req._header = null;
+            this.setRequestProps(...args);
+        }
+        super.addRequest(...args);
+    }
+
+    setRequestProps(
+        ...args
+    ) {
+        const [req, opts] = args;
+        if (!this.isSecureEndpoint()) {
+            const protocol = this[INTERNAL].protocol;
+            const hostname = req.getHeader('host') || 'localhost';
+            const base = `${protocol}//${hostname}`;
+            const url = new URL(req.path, base);
+            if (opts.port !== 80) {
+                url.port = String(opts.port);
+            }
+
+            // Change the `http.ClientRequest` instance's "path" field
+            // to the absolute path of the URL that will be requested.
+            req.path = String(url);
+
+            const headers = {};
+            headers['Proxy-Connection'] = this.keepAlive
+                ? 'Keep-Alive'
+                : 'close';
+            for (const name of Object.keys(headers)) {
+                const value = headers[name];
+                if (value) {
+                    req.setHeader(name, value);
+                }
+            }
+            return;
+        }
+        super.setRequestProps?.(...args);
+    }
+
     createSocket(req, options, cb) {
         const connectOpts = {
             ...options,
@@ -170,23 +230,31 @@ export class CustomHttpAgent extends http.Agent {
         };
         const name = this.getName(connectOpts);
         const fakeSocket = this.incrementSockets(name);
-        Promise.resolve(this.connect(req, connectOpts)).then(
-            (socket) => {
-                this.decrementSockets(name, fakeSocket);
-                this.INTERNAL.currentSocket = socket;
-                // @ts-expect-error `createSocket()` isn't defined in `@types/node`
-                super.createSocket(req, options, cb);
-            },
-            (err) => {
-                this.decrementSockets(name, fakeSocket);
-                cb(err);
-            }
-        );
+        Promise.resolve()
+            .then(() => this.connect(req, connectOpts))
+            .then(
+                (socket) => {
+                    this.decrementSockets(name, fakeSocket);
+                    if (socket instanceof http.Agent) {
+                        try {
+                            return socket.addRequest(req, connectOpts);
+                        } catch (err) {
+                            return cb(err);
+                        }
+                    }
+                    this[INTERNAL].currentSocket = socket;
+                    super.createSocket(req, options, cb);
+                },
+                (err) => {
+                    this.decrementSockets(name, fakeSocket);
+                    cb(err);
+                }
+            );
     }
 
     createConnection() {
-        const socket = this.INTERNAL.currentSocket;
-        this.INTERNAL.currentSocket = undefined;
+        const socket = this[INTERNAL].currentSocket;
+        this[INTERNAL].currentSocket = undefined;
         if (!socket) {
             throw new Error('No socket was returned in the `connect()` function');
         }
@@ -194,34 +262,29 @@ export class CustomHttpAgent extends http.Agent {
     }
 
     get defaultPort() {
-        return this.INTERNAL.protocol === 'https:' ? 443 : 80;
+        return this.isSecureEndpoint() ? 443 : 80;
     }
 
-    set defaultPort(v) {}
+    set defaultPort(v) {
+    }
 
     get protocol() {
-        return this.INTERNAL.protocol;
+        return this[INTERNAL].protocol;
     }
 
-    set protocol(v) {}
+    set protocol(v) {
+    }
 
     /**
      * Called when the node-core HTTP client library is creating a
-     * new HTTP request.
+     * new HTTP(s) request.
      */
     async connect(req, opts) {
-        if (!opts.host) {
-            throw new TypeError('No "host" provided');
-        }
-        if (req.protocol === 'http:') {
-            const hostname = req.getHeader('host');
+        if (!opts.secureEndpoint) {
             req._header = null;
-            const base = `http://${hostname}`;
-            const url = new URL(req.path, base);
-            url.port = String(opts.port);
-            req.path = String(url);
-            const headers = { Host: `${hostname}:${opts.port}`, ['Proxy-Connection']: 'Keep-Alive' };
-            Object.entries(headers).forEach(([key, value]) => req.setHeader(key, value));
+            if (!req.path.includes('://')) {
+                this.setRequestProps(req, opts);
+            }
             // At this point, the http ClientRequest's internal `_header` field
             // might have already been set. If this is the case then we'll need
             // to re-generate the string since we just changed the `req.path`.
@@ -244,19 +307,26 @@ export class CustomHttpAgent extends http.Agent {
             return socket2;
         }
 
+        if (!opts.host) {
+            throw new TypeError('No "host" provided');
+        }
         // Create a socket connection to the proxy server.
         const socket = net.connect(this.connectOpts);
+        const host = net.isIPv6(opts.host) ? `[${opts.host}]` : opts.host;
+        const headers = {Host: `${host}:${opts.port}`};
+        headers['Proxy-Connection'] = this.keepAlive
+            ? 'Keep-Alive'
+            : 'close';
+        let payload = `CONNECT ${host}:${opts.port} HTTP/1.1\r\n`;
+        for (const name of Object.keys(headers)) {
+            payload += `${name}: ${headers[name]}\r\n`;
+        }
+
         const proxyResponsePromise = CustomHttpAgent.parseProxyResponse(socket);
 
-        const host = net.isIPv6(opts.host) ? `[${opts.host}]` : opts.host;
-        const headers = { Host: `${host}:${opts.port}`, ['Proxy-Connection']: 'Keep-Alive' };
-        const payload = Object.entries(headers).reduce(
-            (acc, [key, value]) => (acc += `${key}: ${value}\r\n`),
-            `CONNECT ${host}:${opts.port} HTTP/1.1\r\n`
-        );
         socket.write(`${payload}\r\n`);
 
-        const { connect, buffered } = await proxyResponsePromise;
+        const {connect, buffered} = await proxyResponsePromise;
         req.emit('proxyConnect', connect);
         this.emit('proxyConnect', connect, req);
 
@@ -264,13 +334,9 @@ export class CustomHttpAgent extends http.Agent {
             req.once('socket', (socket) => socket.resume());
             // The proxy is connecting to a TLS server, so upgrade
             // this socket connection to a TLS connection.
-            const copiedOpts = { ...opts };
+            const copiedOpts = {...CustomHttpAgent.setServernameFromNonIpHost(opts)};
             ['host', 'path', 'port'].forEach((key) => void delete copiedOpts[key]);
-            return tls.connect({
-                ...copiedOpts,
-                socket,
-                servername: opts.servername || opts.host,
-            });
+            return tls.connect({...copiedOpts, socket});
         }
 
         // Some other status code that's not 200... need to re-play the HTTP
@@ -286,7 +352,7 @@ export class CustomHttpAgent extends http.Agent {
         // See: https://hackerone.com/reports/541502
         socket.destroy();
 
-        const fakeSocket = new net.Socket({ writable: false });
+        const fakeSocket = new net.Socket({writable: false});
         fakeSocket.readable = true;
 
         // Need to wait for the "socket" event to re-play the "data" events.

@@ -17,7 +17,7 @@ import {
     inHostUsingProxy,
     isLocalHost
 } from '../util/sharedUtil.js'
-import {getResourceFilePath, logError, logInfo} from "../util/nodeUtil";
+import {getResourceFilePath, isKeepAlive, logError, logInfo} from "../util/nodeUtil";
 import {handleServerError} from "../main/main.js";
 import {dialog} from "electron";
 import fs from "fs";
@@ -242,21 +242,21 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
                     agentPort = getRemoteProxyPort(profile);
                 }
             }
-            if (!mapping?.keepHostHeader) {
-                const headers = clientReq.headers;
-                headers.host = targetHost;
-            }
 
-            const agent = agentHost ? new CustomHttpAgent(isTargetHttps ? 'https:' : 'http:', agentHost, agentPort || '80') : undefined
+            const keepAlive = isKeepAlive(clientReq);
+            const agent = agentHost ? new CustomHttpAgent(isTargetHttps ? 'https:' : 'http:', agentHost, agentPort || '80', {keepAlive}) : undefined
             const options = {
                 hostname: targetHost,
                 port: targetPort,
                 method: clientReq.method,
                 path,
                 agent,
-                headers: clientReq.headers,
+                headers: {...clientReq.headers},
                 rejectUnauthorized: false
             };
+            if (!mapping?.keepHostHeader) {
+                options.headers.host = targetHost;
+            }
             const proxyReq = httpOrHttps.request(options, (proxyRes) => {
                 clientRes.writeHead(proxyRes.statusCode, proxyRes.headers);
                 proxyRes.pipe(clientRes);
@@ -347,13 +347,14 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
                 }
             }
 
-            const agent = agentHost ? new CustomHttpAgent(isTargetHttp ? 'http:' : 'https:', agentHost, agentPort || '80') : undefined
+            const keepAlive = isKeepAlive(clientReq);
+            const agent = agentHost ? new CustomHttpAgent(isTargetHttp ? 'http:' : 'https:', agentHost, agentPort || '80', {keepAlive}) : undefined
             const options = {
                 hostname: targetHost,
                 port: targetPort,
                 path: clientReq.url,
                 method: clientReq.method,
-                headers: clientReq.headers,
+                headers: {...clientReq.headers},
                 agent,
                 rejectUnauthorized: false
             };
