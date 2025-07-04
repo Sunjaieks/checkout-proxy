@@ -99,22 +99,6 @@ export class CustomHttpAgent extends http.Agent {
         });
     }
 
-    static setServernameFromNonIpHost = (
-        options
-    ) => {
-        if (
-            options.servername === undefined &&
-            options.host &&
-            !net.isIP(options.host)
-        ) {
-            return {
-                ...options,
-                servername: options.host,
-            };
-        }
-        return options;
-    };
-
     constructor(protocol, host, port, opts) {
         super(opts);
         this[INTERNAL] = {protocol};
@@ -334,7 +318,10 @@ export class CustomHttpAgent extends http.Agent {
             req.once('socket', (socket) => socket.resume());
             // The proxy is connecting to a TLS server, so upgrade
             // this socket connection to a TLS connection.
-            const copiedOpts = {...CustomHttpAgent.setServernameFromNonIpHost(opts)};
+            const copiedOpts = opts.servername === undefined && opts.host && !net.isIP(opts.host) ? {
+                ...opts,
+                servername: opts.host,
+            } : {...opts};
             ['host', 'path', 'port'].forEach((key) => void delete copiedOpts[key]);
             return tls.connect({...copiedOpts, socket});
         }
