@@ -165,15 +165,13 @@ app.whenReady().then(() => {
     createMainWindow(true);
 
     app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) {
+        if (!mainWindow || mainWindow?.isDestroyed()) {
             createMainWindow();
         }
     });
 });
 
-app.on('window-all-closed', async () => {
-    await stopServers();
-    activeProfileIndex = -9;
+app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
         app.quit();
     }
