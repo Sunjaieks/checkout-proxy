@@ -199,9 +199,11 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
                 })
             svrSoc.on('error', (err) => {
                 logError(`[HTTP Proxy][${hostname}:${port}] sever socket error occurred:${JSON.stringify(err)}`);
-                cliSoc.write(`HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\n\r\n` +
-                    `sever socket error occurred in http proxy when accessing ${hostname}:${port}!\nerror:${JSON.stringify(err)}\r\n\r\n`);
-                cliSoc.end();
+                if (cliSoc.writable && !cliSoc.destroyed) {
+                    cliSoc.write(`HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\n\r\n` +
+                        `sever socket error occurred in http proxy when accessing ${hostname}:${port}!\nerror:${JSON.stringify(err)}\r\n\r\n`);
+                    cliSoc.end();
+                }
                 svrSoc.destroy();
             })
             svrSoc.on('close', () => cliSoc.destroy());
