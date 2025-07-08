@@ -290,8 +290,10 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
         });
         httpServer.on('clientError', (err, soc) => {
             logError(`[HTTP Proxy] clientError occurred:${JSON.stringify(err)}`);
-            soc.end(`HTTP/1.1 400 http proxy clientError error occurred:${JSON.stringify(err)}\r\n\r\n`);
-            soc.destroy();
+            if (soc.writable && !soc.destroyed) {
+                soc.end(`HTTP/1.1 400 http proxy clientError error occurred:${JSON.stringify(err)}\r\n\r\n`);
+                soc.destroy();
+            }
         })
         httpServer.on('error', (err) => handleServerError(err, 'HTTP', httpPort));
         httpServer.listen(httpPort, () => {
@@ -428,8 +430,10 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
         });
         httpsServer.on('clientError', (err, soc) => {
             logError(`[HTTPS Proxy] clientError error occurred:${JSON.stringify(err)}`);
-            soc.end(`HTTP/1.1 400 http proxy clientError error occurred:${JSON.stringify(err)}\r\n\r\n`);
-            soc.destroy();
+            if (soc.writable && !soc.destroyed) {
+                soc.end(`HTTP/1.1 400 http proxy clientError error occurred:${JSON.stringify(err)}\r\n\r\n`);
+                soc.destroy();
+            }
         })
         httpsServer.listen(httpsPort, () => {
             logInfo(`Local HTTPS MITM server listening on localhost:${httpsPort}`);
