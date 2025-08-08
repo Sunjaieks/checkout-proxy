@@ -1,6 +1,6 @@
 {
   "name": "checkout-proxy",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "HTTPS Proxy with dynamic certificate generation and host mapping",
   "main": "./out/main/main.js",
   "scripts": {

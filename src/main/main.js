@@ -48,17 +48,15 @@ function loadConfig() {
     }
 }
 
-function saveConfig() {
+function saveConfig(newConfig) {
     try {
-        fs.writeFileSync(configFilePath, JSON.stringify(currentConfig, null, 2));
+        fs.writeFileSync(configFilePath, JSON.stringify(newConfig, null, 2));
         logInfo('Configuration saved to:', configFilePath);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('config-updated', currentConfig, activeProfileIndex);
-        }
     } catch (error) {
         logError('Error saving config:', error);
-        dialog.showErrorBox('Configuration Save Error', `Failed to save configuration: ${error.message}`);
+        throw error;
     }
+    return newConfig;
 }
 
 async function stopServers() {
@@ -285,8 +283,8 @@ ipcMain.on('open-config-editor', () => {
 
 ipcMain.handle('save-edited-config', async (event, newConfigJson) => {
     try {
-        currentConfig = checkConfig(newConfigJson);
-        saveConfig(); // This will also send 'config-updated' to mainWindow
+        const tempConfig = checkConfig(newConfigJson);
+        currentConfig = saveConfig(tempConfig);
         await stopServers(); // Stop current servers
         activeProfileIndex = -9; // Reset active profile, user needs to pick one
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -312,8 +310,8 @@ ipcMain.on('import-config', async () => {
         try {
             const filePath = result.filePaths[0];
             const fileData = fs.readFileSync(filePath, 'utf-8');
-            currentConfig = checkConfig(fileData);
-            saveConfig(); // Overwrites the app's managed JSON and sends 'config-updated'
+            const tempConfig = checkConfig(fileData);
+            currentConfig = saveConfig(tempConfig);
             await stopServers();
             activeProfileIndex = -9;
             if (mainWindow && !mainWindow.isDestroyed()) {

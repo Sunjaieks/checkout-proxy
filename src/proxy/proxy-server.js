@@ -32,7 +32,7 @@ let rootCAString;
 let rootCAKeyString;
 const certCache = new LRUCache(20000, 1000 * 3600 * 240); // 20,000 entries, 10 day TTL
 
-const SERVER_REQUEST_TIMEOUT_SEC = 600; // seconds
+const SERVER_REQUEST_TIMEOUT_SEC = 1200; // seconds
 
 export function loadRootCA() {
     try {
@@ -153,6 +153,37 @@ const sNICallback = mainWindow => (servername, cb) => {
     }
 }
 
+const processBypassCorsAndUserHackForOption = (requestOrigin, requestOptions) => {
+    const preflightHeaders = {
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD',
+        'Access-Control-Allow-Headers': requestOptions.headers['access-control-request-headers'] || 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control, Pragma, Expires, X-CSRF-Token, Range, If-Match, If-None-Match, If-Modified-Since, If-Unmodified-Since',
+        'Access-Control-Max-Age': '3600', // 1 hour
+    };
+    if (requestOrigin) {
+        preflightHeaders['Access-Control-Allow-Origin'] = requestOrigin;
+        preflightHeaders['Access-Control-Allow-Credentials'] = 'true';
+    } else {
+        preflightHeaders['Access-Control-Allow-Origin'] = '*';
+    }
+    return {code: 204, headers: preflightHeaders}
+}
+
+const processBypassCors = (requestOrigin, responseHeaders) => {
+    if (requestOrigin) {
+        responseHeaders['Access-Control-Allow-Origin'] = requestOrigin;
+        responseHeaders['Access-Control-Allow-Credentials'] = 'true';
+        // When ACAO is dynamic, Vary: Origin is important for caching.
+        // It tells caches that the response varies based on the Origin header.
+        // Concatenate if Vary already exists.
+        responseHeaders['Vary'] = responseHeaders['Vary'] ? `${responseHeaders['Vary']}, Origin` : 'Origin';
+    } else {
+        responseHeaders['Access-Control-Allow-Origin'] = '*';
+        // If ACAO is '*', credentials cannot be allowed.
+        delete responseHeaders['Access-Control-Allow-Credentials'];
+    }
+    delete responseHeaders['content-security-policy'];
+    delete responseHeaders['x-frame-options'];
+}
 
 export const startServers = (mainWindow, currentConfig, profileIndexToActivate = -9) => {
     return new Promise((resolve, reject) => {
@@ -245,25 +276,48 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
                 }
             }
 
-            const keepAlive = isKeepAlive(clientReq);
-            const agent = agentHost ? new CustomHttpAgent(isTargetHttps ? 'https:' : 'http:', agentHost, agentPort || '80', {keepAlive}) : undefined
             const options = {
                 hostname: targetHost,
                 port: targetPort,
                 method: clientReq.method,
                 path,
-                agent,
                 headers: {...clientReq.headers},
-                rejectUnauthorized: false
+                rejectUnauthorized: false,
+                timeout: SERVER_REQUEST_TIMEOUT_SEC * 1000
             };
             if (!mapping?.keepHostHeader) {
                 options.headers.host = targetHost;
             }
+
+            const requestOrigin = clientReq.headers.origin;
+            if (clientReq.method === 'OPTIONS' && mapping?.bypassCors) {
+                const hackedResponse = processBypassCorsAndUserHackForOption(requestOrigin, options);
+                clientRes.writeHead(hackedResponse?.code, hackedResponse?.headers);
+                clientRes.end();
+                return;
+            }
+
+            const keepAlive = isKeepAlive(options.headers);
+            if (agentHost && agentPort) {
+                options.agent = new CustomHttpAgent(isTargetHttps ? 'https:' : 'http:', agentHost, agentPort || '80', {
+                    keepAlive,
+                    timeout: SERVER_REQUEST_TIMEOUT_SEC * 1000
+                });
+            }
+
             const proxyReq = httpOrHttps.request(options, (proxyRes) => {
-                clientRes.writeHead(proxyRes.statusCode, proxyRes.headers);
-                proxyRes.pipe(clientRes);
+                const responseHeaders = {...proxyRes.headers};
+                if (mapping?.bypassCors) {
+                    processBypassCors(requestOrigin, responseHeaders);
+                }
+                const originalResponse = {code: proxyRes.statusCode, headers: responseHeaders};
+                clientRes.writeHead(originalResponse?.code, originalResponse?.headers);
+
+                proxyRes.pipe(clientRes).on('error', (err) => {
+                    logError(`[HTTP Proxy][${targetHost}:${targetPort}] Error piping target response to http proxy: ${JSON.stringify(err)}`);
+                    clientRes.destroy(err);
+                });
             });
-            proxyReq.setTimeout(SERVER_REQUEST_TIMEOUT_SEC * 1000);
             proxyReq.on('error', (err) => {
                 if (!clientRes.headersSent) {
                     clientRes.writeHead(502, {'Content-Type': 'text/plain'});
@@ -275,7 +329,7 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
             proxyReq.on('timeout', () => {
                 if (!clientRes.headersSent) {
                     clientRes.writeHead(504, {'Content-Type': 'text/plain'}); // Gateway Timeout
-                    clientRes.end(`Http Proxy error: Timeout(${SERVER_REQUEST_TIMEOUT_SEC} sec) connecting to target`);
+                    clientRes.end(`Http Proxy error: socket timeout connecting to target ${targetHost}:${targetPort}`);
                 }
                 proxyReq.destroy();
             });
@@ -331,65 +385,47 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
                 }
             }
 
-            const requestOrigin = clientReq.headers.origin;
-            if (mapping?.bypassCors) {
-                if (clientReq.method === 'OPTIONS') {
-                    const preflightHeaders = {
-                        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD',
-                        'Access-Control-Allow-Headers': clientReq.headers['access-control-request-headers'] || 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control, Pragma, Expires, X-CSRF-Token, Range, If-Match, If-None-Match, If-Modified-Since, If-Unmodified-Since',
-                        'Access-Control-Max-Age': '3600', // 1 hour
-                    };
-                    if (requestOrigin) {
-                        preflightHeaders['Access-Control-Allow-Origin'] = requestOrigin;
-                        preflightHeaders['Access-Control-Allow-Credentials'] = 'true';
-                    } else {
-                        preflightHeaders['Access-Control-Allow-Origin'] = '*';
-                    }
-                    clientRes.writeHead(204, preflightHeaders);
-                    clientRes.end();
-                    return;
-                }
-            }
-
-            const keepAlive = isKeepAlive(clientReq);
-            const agent = agentHost ? new CustomHttpAgent(isTargetHttp ? 'http:' : 'https:', agentHost, agentPort || '80', {keepAlive}) : undefined
             const options = {
                 hostname: targetHost,
                 port: targetPort,
                 path: clientReq.url,
                 method: clientReq.method,
                 headers: {...clientReq.headers},
-                agent,
-                rejectUnauthorized: false
+                rejectUnauthorized: false,
+                timeout: SERVER_REQUEST_TIMEOUT_SEC * 1000
             };
             if (!mapping?.keepHostHeader) {
                 options.headers.host = originalHost?.split(':')[1] ? `${targetHost}:${targetPort}` : targetHost;
             }
+
+            const requestOrigin = clientReq.headers.origin;
+            if (clientReq.method === 'OPTIONS' && mapping?.bypassCors) {
+                const hackedResponse = processBypassCorsAndUserHackForOption(requestOrigin, options);
+                clientRes.writeHead(hackedResponse?.code, hackedResponse?.headers);
+                clientRes.end();
+                return;
+            }
+
+            const keepAlive = isKeepAlive(options.headers);
+            if (agentHost && agentPort) {
+                options.agent = new CustomHttpAgent(isTargetHttp ? 'http:' : 'https:', agentHost, agentPort || '80', {
+                    keepAlive,
+                    timeout: SERVER_REQUEST_TIMEOUT_SEC * 1000
+                })
+            }
+
             const proxyReq = httpOrHttps.request(options, (proxyRes) => {
                 const responseHeaders = {...proxyRes.headers};
                 if (mapping?.bypassCors) {
-                    if (requestOrigin) {
-                        responseHeaders['Access-Control-Allow-Origin'] = requestOrigin;
-                        responseHeaders['Access-Control-Allow-Credentials'] = 'true';
-                        // When ACAO is dynamic, Vary: Origin is important for caching.
-                        // It tells caches that the response varies based on the Origin header.
-                        // Concatenate if Vary already exists.
-                        responseHeaders['Vary'] = responseHeaders['Vary'] ? `${responseHeaders['Vary']}, Origin` : 'Origin';
-                    } else {
-                        responseHeaders['Access-Control-Allow-Origin'] = '*';
-                        // If ACAO is '*', credentials cannot be allowed.
-                        delete responseHeaders['Access-Control-Allow-Credentials'];
-                    }
-                    delete responseHeaders['content-security-policy'];
-                    delete responseHeaders['x-frame-options'];
+                    processBypassCors(requestOrigin, responseHeaders);
                 }
-                clientRes.writeHead(proxyRes.statusCode, responseHeaders);
+                const originalResponse = {code: proxyRes.statusCode, headers: responseHeaders};
+                clientRes.writeHead(originalResponse?.code, originalResponse?.headers);
                 proxyRes.pipe(clientRes).on('error', (err) => {
-                    logError(`[HTTPS Proxy][${targetHost}:${targetPort}] Error piping target response to http proxy: ${JSON.stringify(err)}`);
+                    logError(`[HTTPS Proxy][${targetHost}:${targetPort}] Error piping target response to https proxy: ${JSON.stringify(err)}`);
                     clientRes.destroy(err);
                 });
             });
-            proxyReq.setTimeout(SERVER_REQUEST_TIMEOUT_SEC * 1000);
 
             proxyReq.on('error', (err) => {
                 const errorResponseHeaders = {'Content-Type': 'text/plain'};
@@ -411,7 +447,7 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
             proxyReq.on('timeout', () => {
                 if (!clientRes.headersSent) {
                     clientRes.writeHead(504, {'Content-Type': 'text/plain'}); // Gateway Timeout
-                    clientRes.end(`Https Proxy error: Timeout(${SERVER_REQUEST_TIMEOUT_SEC} sec) connecting to target`);
+                    clientRes.end(`Https Proxy error: socket timeout connecting to target ${targetHost}:${targetPort}`);
                 }
                 proxyReq.destroy();
             });
