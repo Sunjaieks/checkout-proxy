@@ -11,50 +11,115 @@ import {CustomHttpAgent} from './agent.js';
 import {
     gethttpFixedRule,
     gethttpsFixedRule,
-    getRemoteProxyHost,
-    getRemoteProxyPort,
+    getUrlFactor,
+    getWildcardRule,
     inHostBypassProxy,
     inHostUsingProxy,
-    isLocalHost
+    isLocalHost,
 } from '../util/sharedUtil.js'
-import {getResourceFilePath, isKeepAlive, logError, logInfo} from "../util/nodeUtil";
+import {logError, logInfo, rootCertPath, rootKeyPath} from "../util/nodeUtil";
 import {handleServerError} from "../main/main.js";
-import {dialog} from "electron";
 import fs from "fs";
 import {addShutdown} from "./http-shutdown.js";
 import forge from "node-forge";
 import tls from 'node:tls';
 import {LRUCache} from "./cache";
+import {ASK_TO_RENEW_CA, ASK_TO_RENEW_CA_LONG, CERT_COMMON_NAME} from "../constant/constant";
 
-let rootCA;
+let fallbackRootCASubjectKeyIdentifier;
+let fallbackRootCA
+let fallbackRootCAKey;
+let fallbackRootCAString
+let fallbackRootCAKeyString;
+let rootCASubjectKeyIdentifier;
+let rootCA
 let rootCAKey;
 let rootCAString;
 let rootCAKeyString;
-const certCache = new LRUCache(20000, 1000 * 3600 * 240); // 20,000 entries, 10 day TTL
+const certCache = new LRUCache(10000, 1000 * 3600 * 240); // 10,000 entries, 10 day TTL
+const agentCache = new LRUCache(100, 1000 * 3600); // 100 entries, 1h ttl
 
 const SERVER_REQUEST_TIMEOUT_SEC = 1200; // seconds
 
-export function loadRootCA() {
+export function clearCertCache() {
+    certCache.clear();
+}
+
+export function generateRootCA() {
+    const keys = forge.pki.rsa.generateKeyPair({bits: 2048});
+    const cert = forge.pki.createCertificate();
+
+    cert.publicKey = keys.publicKey;
+    cert.serialNumber = generateSerialNumber()
+    const now = new Date();
+    cert.validity.notBefore = new Date(now.getTime());
+    cert.validity.notBefore.setDate(now.getDate() - 30);
+    cert.validity.notAfter = new Date(now.getTime());
+    cert.validity.notAfter.setDate(now.getDate() + 700);
+    const attrs = [
+        {name: 'commonName', value: CERT_COMMON_NAME},
+        {name: 'organizationName', value: 'Checkout Proxy, Inc.'},
+    ];
+    cert.setSubject(attrs);
+    cert.setIssuer(attrs);
+    const keyIdentifier = cert.generateSubjectKeyIdentifier().getBytes();
+    cert.setExtensions([
+        {name: 'basicConstraints', cA: true, critical: true},
+        {
+            name: 'keyUsage',
+            keyCertSign: true,
+        },
+        {
+            name: 'extKeyUsage',
+            serverAuth: true,
+            clientAuth: true,
+        },
+        {name: 'subjectKeyIdentifier'},
+        {name: 'authorityKeyIdentifier', keyIdentifier}
+    ]);
+    cert.sign(keys.privateKey, forge.md.sha256.create());
+    return {key: keys.privateKey, cert: cert, keyIdentifier};
+}
+
+export async function writeRootCA(key, cert) {
+    const certPem = forge.pki.certificateToPem(cert);
+    const keyPem = forge.pki.privateKeyToPem(key);
     try {
-        const caCertPath = getResourceFilePath('resources/rootCA.crt');
-        const caKeyPath = getResourceFilePath('resources/rootCA.key');
+        fs.writeFileSync(rootCertPath, certPem.replaceAll('\r\n', '\n'));
+        fs.writeFileSync(rootKeyPath, keyPem.replaceAll('\r\n', '\n'));
+    } catch (error) {
+        logError('write certificate error:', error);
+        throw {message: `Failed to save Root CA: ${error.message || 'Unknown error occurred.'} ${ASK_TO_RENEW_CA} Current CA will be used continuously.`};
+    }
+}
 
-        if (!fs.existsSync(caCertPath) || !fs.existsSync(caKeyPath)) {
-            throw new Error('Root CA certificate or key file not found in resources directory. Please generate them first.');
-        }
-
-        rootCAString = fs.readFileSync(caCertPath, 'utf8');
-        rootCAKeyString = fs.readFileSync(caKeyPath, 'utf8');
+export function loadRootCA(key, cert, keyIdentifier) {
+    if (key && cert) {
+        rootCA = cert
+        rootCAKey = key
+        rootCAString = forge.pki.certificateToPem(cert);
+        rootCAKeyString = forge.pki.privateKeyToPem(key);
+        rootCASubjectKeyIdentifier = keyIdentifier
+        return;
+    }
+    try {
+        rootCAString = fs.readFileSync(rootCertPath, 'utf8');
+        rootCAKeyString = fs.readFileSync(rootKeyPath, 'utf8');
         rootCA = forge.pki.certificateFromPem(rootCAString);
         rootCAKey = forge.pki.privateKeyFromPem(rootCAKeyString);
+        rootCASubjectKeyIdentifier = rootCA.generateSubjectKeyIdentifier().getBytes();
         logInfo('Root CA loaded successfully.');
     } catch (e) {
         logError('Failed to load Root CA:', e);
-        dialog.showErrorBox("Root CA Error", "Failed to load Root CA certificate/key. Please ensure 'resources/rootCA.crt' and 'resources/rootCA.key' exist and are valid.\nThe application may not function correctly for HTTPS proxying.\nError: " + e.message);
-        // Allow app to continue but HTTPS proxying will fail for cert generation
-        rootCA = null;
-        rootCAKey = null;
+        const {key, cert, keyIdentifier} = generateRootCA()
+        fallbackRootCA = cert;
+        fallbackRootCAKey = key;
+        fallbackRootCAString = forge.pki.certificateToPem(fallbackRootCA);
+        fallbackRootCAKeyString = forge.pki.privateKeyToPem(fallbackRootCAKey);
+        fallbackRootCASubjectKeyIdentifier = keyIdentifier;
+        throw {message: `Failed to load Root CA: ${e.message || 'Unknown error occurred'}. A fallback CA will be used tentatively. ${ASK_TO_RENEW_CA_LONG}`};
     }
+    return rootCA;
 }
 
 function generateSerialNumber() {
@@ -74,86 +139,80 @@ function generateSerialNumber() {
     return forge.util.bytesToHex(randomBytes);
 }
 
-function generateServerCertificate(hostname) {
-    const cached = certCache.get(hostname)
-    if (cached) return cached;
+const getGenerateServerCertificate = () => {
+    const localCAKey = rootCAKey || fallbackRootCAKey;
+    const localCASubjectKeyIdentifier = rootCASubjectKeyIdentifier || fallbackRootCASubjectKeyIdentifier;
+    return (hostname) => {
+        const cached = certCache.get(hostname)
+        if (cached) return cached;
+        const keys = forge.pki.rsa.generateKeyPair(2048);
+        const cert = forge.pki.createCertificate();
+        cert.publicKey = keys.publicKey;
+        cert.serialNumber = generateSerialNumber();
+        const now = new Date();
+        cert.validity.notBefore = new Date(now.getTime());
+        cert.validity.notBefore.setDate(now.getDate() - 20);
+        cert.validity.notAfter = new Date(now.getTime());
+        cert.validity.notAfter.setDate(now.getDate() + 20);
 
-    if (!rootCAKey || !rootCA) {
-        logError('Root CA not loaded. Cannot generate certificate for', hostname);
-        // This should ideally not happen if loadRootCA is called and checked
-        throw new Error("Root CA not loaded, cannot issue certificate.");
+        const attrs = [{name: 'commonName', value: hostname}, {name: 'organizationName', value: `${hostname}, Inc.`}];
+        cert.setSubject(attrs);
+        cert.setIssuer(rootCA.subject.attributes);
+        cert.setExtensions([
+            {name: 'basicConstraints', cA: false},
+            {
+                name: 'keyUsage',
+                digitalSignature: true,
+                nonRepudiation: true,
+                keyEncipherment: true,
+                dataEncipherment: true
+            },
+            {
+                name: 'extKeyUsage',
+                serverAuth: true,
+                clientAuth: true,
+            },
+            {name: 'subjectAltName', altNames: [{type: 2, value: hostname}]},
+            {name: 'subjectKeyIdentifier'},
+            {name: 'authorityKeyIdentifier', keyIdentifier: localCASubjectKeyIdentifier}
+        ]);
+
+        cert.sign(localCAKey, forge.md.sha256.create());
+
+        const tlsCert = {
+            key: forge.pki.privateKeyToPem(keys.privateKey),
+            cert: forge.pki.certificateToPem(cert),
+        };
+
+        certCache.set(hostname, tlsCert);
+        logInfo(`Generated certificate for ${hostname}`);
+        return tlsCert;
     }
-
-    const keys = forge.pki.rsa.generateKeyPair(2048);
-    const cert = forge.pki.createCertificate();
-    cert.publicKey = keys.publicKey;
-    cert.serialNumber = generateSerialNumber();
-    const now = new Date();
-    cert.validity.notBefore = new Date(now.getTime());
-    cert.validity.notBefore.setDate(now.getDate() - 20);
-    cert.validity.notAfter = new Date(now.getTime());
-    cert.validity.notAfter.setDate(now.getDate() + 20);
-
-    const attrs = [{name: 'commonName', value: hostname}];
-    cert.setSubject(attrs);
-    cert.setIssuer(rootCA.subject.attributes);
-    cert.setExtensions([
-        {name: 'basicConstraints', cA: false},
-        {
-            name: 'keyUsage',
-            keyCertSign: false,
-            digitalSignature: true,
-            nonRepudiation: false,
-            keyEncipherment: true,
-            dataEncipherment: true
-        },
-        {
-            name: 'extKeyUsage',
-            serverAuth: true,
-            clientAuth: false,
-            codeSigning: false,
-            emailProtection: false,
-            timeStamping: false
-        },
-        {name: 'subjectAltName', altNames: [{type: 2 /* DNS */, value: hostname}]}
-    ]);
-
-    cert.sign(rootCAKey, forge.md.sha256.create());
-
-    const tlsCert = {
-        key: forge.pki.privateKeyToPem(keys.privateKey),
-        cert: forge.pki.certificateToPem(cert),
-    };
-
-    certCache.set(hostname, tlsCert);
-    logInfo(`Generated certificate for ${hostname}`);
-    return tlsCert;
 }
 
-const sNICallback = mainWindow => (servername, cb) => {
-    try {
-        const {key, cert} = generateServerCertificate(servername);
-        const secureContext = tls.createSecureContext({key, cert});
-        cb(null, secureContext);
-    } catch (err) {
-        logError(`Error in SNICallback for ${servername}:`, err);
-        // cb(err); // This might crash the server, better to log and potentially use a default context or fail gracefully
-        // To avoid crashing, don't call cb(err) directly if generateServerCertificate can throw.
-        // It's better if generateServerCertificate returns a default/error cert or SNICallback handles this.
-        // For now, let it fail if root CA is missing, as it's a fundamental issue.
-        if (err.message.includes("Root CA not loaded")) {
-            // A specific error that indicates a setup problem, might be good to inform user
+const getSNICallback = mainWindow => {
+    const generateServerCertificate = getGenerateServerCertificate()
+    return (servername, cb) => {
+        try {
+            const {key, cert} = generateServerCertificate(servername);
+            const secureContext = tls.createSecureContext({key, cert});
+            cb(null, secureContext);
+        } catch (err) {
+            logError(`Error in SNICallback for ${servername}:`, err);
+            // cb(err); // This might crash the server, better to log and potentially use a default context or fail gracefully
+            // To avoid crashing, don't call cb(err) directly if generateServerCertificate can throw.
+            // For now, let it fail.
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('proxy-status-update', {
-                    error: `Cannot generate certificate for ${servername}: Root CA not loaded. Please ensure root CA is correctly set up.`
+                    error: `Cannot generate certificate for ${servername}: ${err.message}.`
                 });
             }
+            cb(err);
         }
-        cb(err); // Let it fail for now.
     }
 }
 
-const processBypassCorsAndUserHackForOption = (requestOrigin, requestOptions) => {
+const processBypassCorsAndUserHackForOption = (requestOrigin, requestOptions, hackResponseFunctions) => {
     const preflightHeaders = {
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD',
         'Access-Control-Allow-Headers': requestOptions.headers['access-control-request-headers'] || 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control, Pragma, Expires, X-CSRF-Token, Range, If-Match, If-None-Match, If-Modified-Since, If-Unmodified-Since',
@@ -165,38 +224,78 @@ const processBypassCorsAndUserHackForOption = (requestOrigin, requestOptions) =>
     } else {
         preflightHeaders['Access-Control-Allow-Origin'] = '*';
     }
-    return {code: 204, headers: preflightHeaders}
+    const originalResponse = {code: 204, headers: preflightHeaders};
+    return (hackResponseFunctions || []).reduce((acc, f) => f(requestOptions, acc), originalResponse)
+}
+
+const setHeaderNameIgnoreCase = (responseHeaders, headerKey, newValue) => {
+    if (!headerKey) return;
+    const actuallyKey =
+        Object.keys(responseHeaders).find(key => key.toLowerCase() === headerKey.toLowerCase());
+    responseHeaders[actuallyKey ? actuallyKey : headerKey] = newValue;
+}
+
+const findHeaderWithIgnoreCase = (responseHeaders, headerKey) => {
+    if (!headerKey) return undefined;
+    const actuallyKey =
+        Object.keys(responseHeaders).find(key => key.toLowerCase() === headerKey.toLowerCase());
+    if (!actuallyKey) return undefined;
+    if (!responseHeaders[actuallyKey]) {
+        delete responseHeaders[actuallyKey];
+        return undefined;
+    }
+    return actuallyKey;
+}
+
+const removeHeaderWithIgnoreCase = (responseHeaders, headerKey) => {
+    if (!headerKey) return;
+    const actuallyKey =
+        Object.keys(responseHeaders).find(key => key.toLowerCase() === headerKey.toLowerCase());
+    delete responseHeaders[actuallyKey];
 }
 
 const processBypassCors = (requestOrigin, responseHeaders) => {
     if (requestOrigin) {
-        responseHeaders['Access-Control-Allow-Origin'] = requestOrigin;
-        responseHeaders['Access-Control-Allow-Credentials'] = 'true';
+        setHeaderNameIgnoreCase(responseHeaders, 'Access-Control-Allow-Origin', requestOrigin)
+        setHeaderNameIgnoreCase(responseHeaders, 'Access-Control-Allow-Credentials', 'true')
         // When ACAO is dynamic, Vary: Origin is important for caching.
         // It tells caches that the response varies based on the Origin header.
         // Concatenate if Vary already exists.
-        responseHeaders['Vary'] = responseHeaders['Vary'] ? `${responseHeaders['Vary']}, Origin` : 'Origin';
+        const varyKey = findHeaderWithIgnoreCase(responseHeaders, 'Vary',)
+        responseHeaders[varyKey ?? 'Vary'] = responseHeaders[varyKey] ? `${responseHeaders[varyKey]}, Origin` : 'Origin';
     } else {
-        responseHeaders['Access-Control-Allow-Origin'] = '*';
+        setHeaderNameIgnoreCase(responseHeaders, 'Access-Control-Allow-Origin', '*')
         // If ACAO is '*', credentials cannot be allowed.
-        delete responseHeaders['Access-Control-Allow-Credentials'];
+        removeHeaderWithIgnoreCase(responseHeaders, 'Access-Control-Allow-Credentials')
     }
-    delete responseHeaders['content-security-policy'];
-    delete responseHeaders['x-frame-options'];
+    removeHeaderWithIgnoreCase(responseHeaders, 'content-security-policy')
+    removeHeaderWithIgnoreCase(responseHeaders, 'x-frame-options')
 }
 
-export const startServers = (mainWindow, currentConfig, profileIndexToActivate = -9) => {
-    return new Promise((resolve, reject) => {
+const getCustomHttpAgent = (protocol, hostname, port) => {
+    return agentCache.get(`${protocol}|${hostname}|${port}`) ??
+        agentCache.set(`${protocol}|${hostname}|${port}`, new CustomHttpAgent(`${protocol}:`, hostname, port, {
+            keepAlive: true,
+        }))
+}
+
+export const getStartServers = (mainWindow) => {
+    const sNICallback = getSNICallback(mainWindow);
+    const usingFallbackCert = !rootCAKeyString || !rootCAString
+    const localCAKeyString = usingFallbackCert ? fallbackRootCAKeyString : rootCAKeyString;
+    const localCAString = usingFallbackCert ? fallbackRootCAString : rootCAString;
+    return (appPort, currentProfile) => new Promise((resolve, reject) => {
+        agentCache.clear();
         let startedServers = 0;
-        const httpPort = currentConfig.appPort[0];
-        const httpsPort = currentConfig.appPort[1];
-        const profile = currentConfig.profile[profileIndexToActivate];
+        const httpPort = appPort[0];
+        const httpsPort = appPort[1];
+        const profile = currentProfile;
         const httpServer = addShutdown(http.createServer());
         const httpsServer = addShutdown(https.createServer({
-            key: rootCAKeyString,
-            cert: rootCAString,
+            key: localCAKeyString,
+            cert: localCAString,
             ciphers: 'ALL:!LOW:!DSS:!EXP',
-            SNICallback: sNICallback(mainWindow),
+            SNICallback: sNICallback,
         }));
         httpServer.on('connect', (cliReq, cliSoc, cliHead) => {
             const url = new URL(`http://${cliReq.url}`);
@@ -204,7 +303,7 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
             let hostname = url.hostname;
             logInfo(`[HTTP Proxy][${hostname}:${port}] CONNECT request received.`);
             if (profile !== null) {
-                if (gethttpsFixedRule(profile)[`${hostname}:${port}`]) {
+                if (gethttpsFixedRule(profile)[`${hostname}:${port}`] || getWildcardRule(gethttpsFixedRule(profile), hostname, port)) {
                     port = httpsPort;
                     hostname = 'localhost';
                 } else if (inHostUsingProxy(profile, hostname) && !inHostBypassProxy(profile, hostname)) {
@@ -251,59 +350,58 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
             const {host, port, pathname, search} = new URL(clientReq.url);
             const path = pathname + search;
             let targetHost = host.split(':')[0];
-            let targetPort = port || '80';
+            let targetPort = port;
             logInfo(`[HTTP Proxy][${targetHost}:${targetPort}] request received.`);
-            let httpOrHttps;
-            let agentHost;
-            let agentPort;
-            const rule = gethttpFixedRule(profile);
-            const originalHostPort = `${targetHost}:${targetPort}`
-            const mapping = rule[originalHostPort];
-            const isTargetHttps = mapping?.target?.startsWith('https:');
-            httpOrHttps = isTargetHttps ? https : http;
-            if (profile !== null) {
+            let agentUrl;
+            const httpFixedRule = gethttpFixedRule(profile);
+            const originalHostPort = `${targetHost}:${targetPort || '80'}`;
+            const mapping = httpFixedRule[originalHostPort] || getWildcardRule(httpFixedRule, targetHost, targetPort || '80');
+            const urlFactor = getUrlFactor(mapping?.target)
+            //default is http
+            const isTargetHttps = urlFactor?.protocol === 'https';
+
+            if (profile) {
                 if (mapping) {
-                    const mapped = mapping?.target?.replace(/https?:\/\//, '');
-                    targetPort = mapped?.split(':')[1] || (isTargetHttps ? '443' : '80');
-                    targetHost = mapped?.split(':')[0];
+                    targetPort = urlFactor?.port || targetPort;
+                    targetHost = urlFactor?.host || targetHost;
                     if (!isLocalHost(targetHost) && mapping.customizedProxy) {
-                        agentHost = mapping.customizedProxy.split(':')[0]
-                        agentPort = mapping.customizedProxy.split(':')[1]
+                        agentUrl = mapping.customizedProxy;
                     }
                 } else if (!isLocalHost(targetHost) && inHostUsingProxy(profile, targetHost) && !inHostBypassProxy(profile, targetHost)) {
-                    agentHost = getRemoteProxyHost(profile);
-                    agentPort = getRemoteProxyPort(profile);
+                    agentUrl = profile?.proxy?.proxyUrl;
                 }
             }
-
-            const options = {
+            targetPort = targetPort || (isTargetHttps ? '443' : '80');
+            const requestOrigin = clientReq.headers.origin;
+            const changeableOptions = {
                 hostname: targetHost,
                 port: targetPort,
                 method: clientReq.method,
                 path,
                 headers: {...clientReq.headers},
-                rejectUnauthorized: false,
-                timeout: SERVER_REQUEST_TIMEOUT_SEC * 1000
+                protocol: isTargetHttps ? 'https' : 'http',
+                proxyUrl: agentUrl,
             };
             if (!mapping?.keepHostHeader) {
-                options.headers.host = targetHost;
+                changeableOptions.headers.host = targetHost;
             }
 
-            const requestOrigin = clientReq.headers.origin;
             if (clientReq.method === 'OPTIONS' && mapping?.bypassCors) {
-                const hackedResponse = processBypassCorsAndUserHackForOption(requestOrigin, options);
+                const hackedResponse = processBypassCorsAndUserHackForOption(requestOrigin, changeableOptions, mapping?.hackResponse);
                 clientRes.writeHead(hackedResponse?.code, hackedResponse?.headers);
                 clientRes.end();
                 return;
             }
 
-            const keepAlive = isKeepAlive(options.headers);
-            if (agentHost && agentPort) {
-                options.agent = new CustomHttpAgent(isTargetHttps ? 'https:' : 'http:', agentHost, agentPort || '80', {
-                    keepAlive,
-                    timeout: SERVER_REQUEST_TIMEOUT_SEC * 1000
-                });
+            const hackedOptions = (mapping?.hackRequest || []).reduce((acc, f) => f(acc), changeableOptions)
+            const options = {...hackedOptions, rejectUnauthorized: false}
+            if (typeof options.timeout === 'undefined') options.timeout = SERVER_REQUEST_TIMEOUT_SEC * 1000;
+            if (options.proxyUrl) {
+                const agentUrlFactor = getUrlFactor(options.proxyUrl);
+                options.agent = agentUrlFactor ? getCustomHttpAgent(options.protocol, agentUrlFactor.host, agentUrlFactor.port) : undefined;
             }
+            const httpOrHttps = options?.protocol === 'https' ? https : http;
+            ['protocol', 'proxyUrl'].forEach(key => delete options[key]);
 
             const proxyReq = httpOrHttps.request(options, (proxyRes) => {
                 const responseHeaders = {...proxyRes.headers};
@@ -311,7 +409,9 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
                     processBypassCors(requestOrigin, responseHeaders);
                 }
                 const originalResponse = {code: proxyRes.statusCode, headers: responseHeaders};
-                clientRes.writeHead(originalResponse?.code, originalResponse?.headers);
+                const hackedResponse = (mapping?.hackResponse || []).reduce((acc, f) => f(hackedOptions, acc), originalResponse)
+
+                clientRes.writeHead(hackedResponse?.code, hackedResponse?.headers);
 
                 proxyRes.pipe(clientRes).on('error', (err) => {
                     logError(`[HTTP Proxy][${targetHost}:${targetPort}] Error piping target response to http proxy: ${JSON.stringify(err)}`);
@@ -321,7 +421,10 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
             proxyReq.on('error', (err) => {
                 if (!clientRes.headersSent) {
                     clientRes.writeHead(502, {'Content-Type': 'text/plain'});
-                    clientRes.end(`http proxy request error!\nerror:${JSON.stringify(err)}`);
+                    clientRes.end(`http proxy request error!\nerror:${JSON.stringify({
+                        code: err?.code,
+                        message: err?.message
+                    })}`);
                 }
                 proxyReq.destroy();
 
@@ -337,7 +440,10 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
                 // proxyReq might have already sent headers if error is on clientReq side after connection
                 if (!clientRes.headersSent) {
                     clientRes.writeHead(500, {'Content-Type': 'text/plain'});
-                    clientRes.end('Http Proxy error piping client request.');
+                    clientRes.end(`Http Proxy error piping client request.\nerror:${JSON.stringify({
+                        code: err?.code,
+                        message: err?.message
+                    })}`);
                 }
                 clientReq.destroy(err);
             });
@@ -345,74 +451,74 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
         httpServer.on('clientError', (err, soc) => {
             logError(`[HTTP Proxy] clientError occurred:${JSON.stringify(err)}`);
             if (soc.writable && !soc.destroyed) {
-                soc.end(`HTTP/1.1 400 http proxy clientError error occurred:${JSON.stringify(err)}\r\n\r\n`);
+                soc.end(`HTTP/1.1 400 http proxy clientError error occurred:${JSON.stringify({
+                    code: err?.code,
+                    message: err?.message
+                })}\r\n\r\n`);
                 soc.destroy();
             }
         })
         httpServer.on('error', (err) => handleServerError(err, 'HTTP', httpPort));
-        httpServer.listen(httpPort, () => {
+        httpServer.listen(httpPort, '::', () => {
             logInfo(`HTTP Proxy server listening on localhost:${httpPort}`);
             startedServers++;
             if (startedServers === 2) {
-                resolve({startedHttpServer: httpServer, startedHttpsServer: httpsServer});
+                resolve({startedHttpServer: httpServer, startedHttpsServer: httpsServer, usingFallbackCert});
             }
         });
 
         httpsServer.on('request', (clientReq, clientRes) => {
-            const originalHost = clientReq.headers['host'];
+            const originalHost = clientReq.headers[findHeaderWithIgnoreCase(clientReq.headers, 'host')];
             let targetHost = originalHost?.split(':')[0] || originalHost;
-            let targetPort = originalHost?.split(':')[1] || '443';
-            let httpOrHttps;
-            let agentHost;
-            let agentPort;
-            const rule = gethttpsFixedRule(profile);
-            const originalHostPort = `${targetHost}:${targetPort}`
-            const mapping = rule[originalHostPort];
-            const isTargetHttp = mapping?.target?.startsWith('http:');
-            httpOrHttps = isTargetHttp ? http : https;
-            if (profile !== null) {
+            let targetPort = originalHost?.split(':')[1];
+            let agentUrl;
+            const httpsFixedRule = gethttpsFixedRule(profile);
+            const originalHostPort = `${targetHost}:${targetPort || '443'}`;
+            const mapping = httpsFixedRule[originalHostPort] || getWildcardRule(httpsFixedRule, targetHost, targetPort || '443');
+            const urlFactor = getUrlFactor(mapping?.target)
+            //default is https
+            const isTargetHttp = urlFactor?.protocol === 'http';
+            if (profile) {
                 if (mapping) {
-                    const mapped = mapping?.target?.replace(/https?:\/\//, '');
-                    targetPort = mapped?.split(':')[1] || (isTargetHttp ? '80' : '443');
-                    targetHost = mapped?.split(':')[0];
+                    targetPort = urlFactor?.port || targetPort;
+                    targetHost = urlFactor?.host || targetHost;
                     if (!isLocalHost(targetHost) && mapping.customizedProxy) {
-                        agentHost = mapping.customizedProxy.split(':')[0]
-                        agentPort = mapping.customizedProxy.split(':')[1]
+                        agentUrl = mapping.customizedProxy;
                     }
                 } else if (!isLocalHost(targetHost) && inHostUsingProxy(profile, targetHost) && !inHostBypassProxy(profile, targetHost)) {
-                    agentHost = getRemoteProxyHost(profile);
-                    agentPort = getRemoteProxyPort(profile);
+                    agentUrl = profile?.proxy?.proxyUrl;
                 }
             }
+            targetPort = targetPort || (isTargetHttp ? '80' : '443');
 
-            const options = {
+            const requestOrigin = clientReq.headers.origin;
+            const changeableOptions = {
                 hostname: targetHost,
                 port: targetPort,
                 path: clientReq.url,
                 method: clientReq.method,
                 headers: {...clientReq.headers},
-                rejectUnauthorized: false,
-                timeout: SERVER_REQUEST_TIMEOUT_SEC * 1000
+                protocol: isTargetHttp ? 'http' : 'https',
+                proxyUrl: agentUrl
             };
             if (!mapping?.keepHostHeader) {
-                options.headers.host = originalHost?.split(':')[1] ? `${targetHost}:${targetPort}` : targetHost;
+                changeableOptions.headers.host = originalHost?.split(':')[1] ? `${targetHost}:${targetPort}` : targetHost;
             }
-
-            const requestOrigin = clientReq.headers.origin;
             if (clientReq.method === 'OPTIONS' && mapping?.bypassCors) {
-                const hackedResponse = processBypassCorsAndUserHackForOption(requestOrigin, options);
+                const hackedResponse = processBypassCorsAndUserHackForOption(requestOrigin, changeableOptions, mapping?.hackResponse);
                 clientRes.writeHead(hackedResponse?.code, hackedResponse?.headers);
                 clientRes.end();
                 return;
             }
-
-            const keepAlive = isKeepAlive(options.headers);
-            if (agentHost && agentPort) {
-                options.agent = new CustomHttpAgent(isTargetHttp ? 'http:' : 'https:', agentHost, agentPort || '80', {
-                    keepAlive,
-                    timeout: SERVER_REQUEST_TIMEOUT_SEC * 1000
-                })
+            const hackedOptions = (mapping?.hackRequest || []).reduce((acc, f) => f(acc), changeableOptions)
+            const options = {...hackedOptions, rejectUnauthorized: false}
+            if (typeof options.timeout === 'undefined') options.timeout = SERVER_REQUEST_TIMEOUT_SEC * 1000;
+            if (options.proxyUrl) {
+                const agentUrlFactor = getUrlFactor(options.proxyUrl);
+                options.agent = agentUrlFactor ? getCustomHttpAgent(options.protocol, agentUrlFactor.host, agentUrlFactor.port) : undefined;
             }
+            const httpOrHttps = options?.protocol === 'http' ? http : https;
+            ['protocol', 'proxyUrl'].forEach(key => delete options[key]);
 
             const proxyReq = httpOrHttps.request(options, (proxyRes) => {
                 const responseHeaders = {...proxyRes.headers};
@@ -420,7 +526,8 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
                     processBypassCors(requestOrigin, responseHeaders);
                 }
                 const originalResponse = {code: proxyRes.statusCode, headers: responseHeaders};
-                clientRes.writeHead(originalResponse?.code, originalResponse?.headers);
+                const hackedResponse = (mapping?.hackResponse || []).reduce((acc, f) => f(hackedOptions, acc), originalResponse)
+                clientRes.writeHead(hackedResponse?.code, hackedResponse?.headers);
                 proxyRes.pipe(clientRes).on('error', (err) => {
                     logError(`[HTTPS Proxy][${targetHost}:${targetPort}] Error piping target response to https proxy: ${JSON.stringify(err)}`);
                     clientRes.destroy(err);
@@ -440,7 +547,10 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
                 }
                 if (!clientRes.headersSent) {
                     clientRes.writeHead(502, errorResponseHeaders);
-                    clientRes.end(`Https proxy request error!\nerror:${JSON.stringify(err)}`);
+                    clientRes.end(`Https proxy request error!\nerror:${JSON.stringify({
+                        code: err?.code,
+                        message: err?.message
+                    })}`);
                 }
                 proxyReq.destroy();
             });
@@ -456,7 +566,10 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
                 // proxyReq might have already sent headers if error is on clientReq side after connection
                 if (!clientRes.headersSent) {
                     clientRes.writeHead(500, {'Content-Type': 'text/plain'});
-                    clientRes.end('Proxy error piping client request.');
+                    clientRes.end(`Proxy error piping client request.\nerror:${JSON.stringify({
+                        code: err?.code,
+                        message: err?.message
+                    })}`);
                 }
                 clientReq.destroy(err);
             });
@@ -467,15 +580,18 @@ export const startServers = (mainWindow, currentConfig, profileIndexToActivate =
         httpsServer.on('clientError', (err, soc) => {
             logError(`[HTTPS Proxy] clientError error occurred:${JSON.stringify(err)}`);
             if (soc.writable && !soc.destroyed) {
-                soc.end(`HTTP/1.1 400 http proxy clientError error occurred:${JSON.stringify(err)}\r\n\r\n`);
+                soc.end(`HTTP/1.1 400 http proxy clientError error occurred:${JSON.stringify({
+                    code: err?.code,
+                    message: err?.message
+                })}\r\n\r\n`);
                 soc.destroy();
             }
         })
-        httpsServer.listen(httpsPort, () => {
+        httpsServer.listen(httpsPort, '::', () => {
             logInfo(`Local HTTPS MITM server listening on localhost:${httpsPort}`);
             startedServers++;
             if (startedServers === 2) {
-                resolve({startedHttpServer: httpServer, startedHttpsServer: httpsServer});
+                resolve({startedHttpServer: httpServer, startedHttpsServer: httpsServer, usingFallbackCert});
             }
         });
     });

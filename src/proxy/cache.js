@@ -34,5 +34,10 @@ export class LRUCache {
             this.cache.delete(oldestKey);
         }
         this.cache.set(key, [value, new Date()]);
+        return value;
+    }
+
+    clear(){
+        this.cache.clear();
     }
 }

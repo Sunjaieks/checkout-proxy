@@ -2,18 +2,17 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Edit Configuration</title>
+    <title>Edit Json Profile</title>
     <meta content="worker-src blob:; script-src data: 'self'; style-src 'self' 'unsafe-inline';" http-equiv="Content-Security-Policy">
     <link href="./style/styles.css" rel="stylesheet">
 </head>
 <body style="padding-bottom: 0">
 <div class="editor-container">
     <div  class="editor-container-title">
-        <h2 style="margin-top: 12px; margin-left: 5px">Edit Configuration</h2>
+        <h2 id="title" style="margin-top: 12px; margin-left: 5px">Edit Json Profile</h2>
         <div class='editor-category'>
-                <div class="edit-tab-button selected"  id="fullConfigButton">full config</div>
-                <div class="edit-tab-button"  id="globalSettingsButton">global settings</div>
-                <div class="edit-tab-button"  id="hackFunctionsButton">hack functions</div>
+            <div class="edit-tab-button selected"  id="configButton">current profile</div>
+            <div class="edit-tab-button"  id="globalSettingsButton">global settings</div>
         </div>
     </div>
     <div class="textarea-and-message">
@@ -22,7 +21,7 @@
     </div>
     <div class="editor-actions">
         <div style="padding: 0; margin-left: 5px">
-            <button id="btnReset">Reset Options</button>
+            <button id="btnMore">More</button>
         </div>
         <div style="padding: 0; margin-right: 5px">
             <button id="btnAbort">Abort</button>
@@ -30,6 +29,6 @@
         </div>
     </div>
 </div>
-<script type="module" src="./src/editor-renderer.js"></script>
+<script type="module" src="./src/profile-editor-renderer.js"></script>
 </body>
 </html>

@@ -1,3 +1,5 @@
+import {HELP_WINDOW_NAME} from "../../constant/constant";
+
 function basicMarkdownToHtml(mdText) {
     // 1. Initialize state variables
     let html = '';
@@ -13,7 +15,6 @@ function basicMarkdownToHtml(mdText) {
             .replace(/!\[([^\]]+)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">') // Images
             .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="external-link">$1</a>') // Links
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
-            .replace(/\*(.*?)\*/g, '<em>$1</em>') // Italic
             .replace(/~~(.*?)~~/g, '<del>$1</del>') // Strikethrough
             // Inline code, ensuring its content is properly escaped
             .replace(/`([^`]+)`/g, (match, code) => `<code>${code.replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>')}</code>`);
@@ -136,20 +137,13 @@ async function loadHelpContent() {
             console.error('Error in help_renderer:', error);
         }
     });
-    createDownloadButton();
 }
 
-function createDownloadButton() {
-    const downloadButtonContainerEl = document.getElementById('downloadButton');
-    if (!downloadButtonContainerEl) {
-        console.warn("Download button container not found. Button will not be added.");
-        return;
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        window.electronAPI.closeWindow(HELP_WINDOW_NAME);
     }
-    downloadButtonContainerEl.addEventListener('click', (event) => {
-        event.preventDefault();
-        window.electronAPI.downloadRootCA();
-    });
-}
+});
 
 loadHelpContent();
 

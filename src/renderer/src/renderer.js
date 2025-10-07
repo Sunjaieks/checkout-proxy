@@ -1,15 +1,29 @@
 const httpPortEl = document.getElementById('httpPort');
 const httpsPortEl = document.getElementById('httpsPort');
 const activeProfileNameEl = document.getElementById('activeProfileName');
+const activePlaceholderEl = document.getElementById('activePlaceholder');
 const activeProfileIndicatorEl = document.getElementById('activeProfileIndicator');
 const statusMessageEl = document.getElementById('statusMessage');
 const profilesListEl = document.getElementById('profilesList');
 const appVersionDisplayEl = document.getElementById('app-version-display');
 
+const placeholderOverlayEl = document.getElementById('placeholder-overlay');
+const placeholderDialogEl = document.getElementById('placeholder-dialog');
+const placeholderInputsEl = document.getElementById('placeholder-inputs');
+const placeholderOkBtn = document.getElementById('placeholder-ok-btn');
+const directConnectBtn = document.getElementById('btnDirectConnect');
+
+let placeHolderOptionsMap = {};
 let currentConfigData = null;
 let currentActiveProfileIndex = -9;
-
+let currentInput = null;
 let debounceTimer;
+let placeholderModalTabFocusIndex = 0;
+let placeholderModalTabEls = [];
+let disableMouseEvents = false;
+let communicating = false;
+const placeholderDialogOnClickHandler = [];
+const recentUsedMap = new Map();
 
 function debounce(func) {
     return function () {
@@ -32,21 +46,29 @@ async function loadAppVersion() {
             appVersionDisplayEl.textContent = `Version: ${version}`;
         }
     } catch (error) {
-        console.error('Failed to load app version:', error);
         if (appVersionDisplayEl) {
             appVersionDisplayEl.textContent = 'Version: N/A';
         }
     }
 }
 
-function renderProfilesStatus() {
-    document.getElementById('btnDirectConnect').classList[currentActiveProfileIndex === -1 ? 'add' : 'remove']('on');
-    const allIndicator = profilesListEl.querySelectorAll('.profile-indicator-container .indicator');
-    allIndicator?.forEach((node, index) => {
-        node.classList.remove('on');
-        node.classList.remove('error');
-        if (node.dataset.profile === `${currentActiveProfileIndex}`) {
-            node.classList.add('on');
+function renderProfilesStatus(activeProfileIndex, placeholders) {
+    directConnectBtn?.classList[activeProfileIndex === -1 ? 'add' : 'remove']('on');
+    const allLeftContainer = profilesListEl.querySelectorAll('.profile-left-container');
+    allLeftContainer?.forEach((node, index) => {
+        const indicator = node.nextSibling.querySelector('.profile-indicator-container .indicator');
+        const placeholderContainer = node.querySelector('.profile-left-bottom-container')
+        indicator.classList.remove('on');
+        indicator.classList.remove('error');
+        if (placeholderContainer) placeholderContainer.outerHTML = '';
+        if (indicator.dataset.profile === `${activeProfileIndex}`) {
+            indicator.classList.add('on');
+            if (Object.keys(placeholders || {}).length > 0) {
+                const leftBottomContainer = document.createElement('div');
+                leftBottomContainer.className = 'profile-left-bottom-container';
+                leftBottomContainer.textContent = '=> ' + Object.entries(placeholders).map(([key, value]) => `${key}:${value}`).join(', ')
+                node.append(leftBottomContainer)
+            }
         }
     });
 }
@@ -59,25 +81,32 @@ function updateStatusDisplay(status) {
         httpsPortEl.textContent = status.httpsPort;
     }
 
-    if (!(status.activeProfileIndex == null)) {
-        currentActiveProfileIndex = status.activeProfileIndex;
-        renderProfilesStatus();
-    }
+    currentActiveProfileIndex = status.activeProfileIndex ?? currentActiveProfileIndex;
+    renderProfilesStatus(currentActiveProfileIndex, status.toBeDecided);
 
     if (currentActiveProfileIndex === -1) {
         activeProfileNameEl.textContent = 'Direct Connect';
         activeProfileIndicatorEl.className = 'indicator on';
+        activePlaceholderEl.textContent = '';
     } else if (currentActiveProfileIndex >= 0 && currentConfigData?.profile?.[currentActiveProfileIndex]) {
-        activeProfileNameEl.textContent = currentConfigData.profile[currentActiveProfileIndex].name;
+        activeProfileNameEl.textContent = status.profileName ?? currentConfigData.profile[currentActiveProfileIndex].name;
         activeProfileIndicatorEl.className = 'indicator on';
+        const placeholderString = Object.entries(status.toBeDecided || {}).map(([key, value]) => `${key}:${value}`).join(', ');
+        activePlaceholderEl.textContent = placeholderString ? `<${placeholderString}>` : '';
     } else {
         activeProfileNameEl.textContent = 'None';
         activeProfileIndicatorEl.className = 'indicator';
+        activePlaceholderEl.textContent = '';
     }
 
+    statusMessageEl.style.visibility = false;
     if (status.message) {
         statusMessageEl.textContent = status.message;
         statusMessageEl.style.color = 'green';
+    }
+    if (status.warning) {
+        statusMessageEl.textContent = status.warning;
+        statusMessageEl.style.color = 'brown';
     }
     if (status.error) {
         statusMessageEl.textContent = status.error;
@@ -85,6 +114,12 @@ function updateStatusDisplay(status) {
         // If error, ensure main indicator is off or error state
         activeProfileIndicatorEl.className = 'indicator error';
     }
+    if (statusMessageEl.scrollHeight > 31) {
+        statusMessageEl.classList.add('big')
+    } else {
+        statusMessageEl.classList.remove('big')
+    }
+    statusMessageEl.style.visibility = true;
 }
 
 
@@ -104,9 +139,27 @@ function renderProfiles() {
         const item = document.createElement('div');
         item.className = 'profile-item';
 
+        const profileLeftContainer = document.createElement('div');
+        profileLeftContainer.className = 'profile-left-container';
+        const profileLeftTopContainer = document.createElement('div');
+        profileLeftTopContainer.className = 'profile-left-top-container';
         const nameEl = document.createElement('span');
         nameEl.className = 'profile-name';
         nameEl.textContent = profile.name || `Profile ${index + 1}`;
+
+        const editEl = document.createElement('span');
+        editEl.className = 'profile-edit-icon';
+        editEl.addEventListener('click', debounce((event) => {
+            event.preventDefault();
+            window.electronAPI.editProxyProfile(index);
+        }));
+        profileLeftTopContainer.append(nameEl, editEl);
+        profileLeftContainer.append(profileLeftTopContainer)
+
+        const rightContainer = document.createElement('div');
+        rightContainer.className = 'profile-right-container';
+        const rightTopContainer = document.createElement('div');
+        rightTopContainer.className = 'profile-right-top-container';
 
         const actionsEl = document.createElement('div');
         actionsEl.className = 'profile-actions';
@@ -115,7 +168,11 @@ function renderProfiles() {
         startButton.textContent = 'Start';
         startButton.addEventListener('click', debounce((event) => {
             event.preventDefault();
-            window.electronAPI.startProxyProfile(index);
+            if (profile.toBeDecided?.length > 0) {
+                showPlaceholderDialog(index, profile.toBeDecided, startButton);
+            } else {
+                window.electronAPI.startProxyProfile(index);
+            }
         }));
 
         const indicatorContainer = document.createElement('div');
@@ -134,20 +191,285 @@ function renderProfiles() {
 
         indicatorContainer.appendChild(indicator);
         actionsEl.appendChild(startButton);
+        rightTopContainer.append(actionsEl, indicatorContainer)
+        rightContainer.append(rightTopContainer)
 
-        item.appendChild(nameEl);
-        item.appendChild(actionsEl);
-        item.appendChild(indicatorContainer);
+        item.appendChild(profileLeftContainer);
+        item.appendChild(rightContainer);
         profilesListEl.appendChild(item);
     });
 }
+
+function repositionAndShowOptions(placeholderName, optionsContainer, alwaysShow = false) {
+    if (!currentInput || (!alwaysShow && optionsContainer.classList.contains('visible'))) {
+        optionsContainer.classList.remove('visible');
+        placeHolderOptionsMap[placeholderName]?.[1]?.classList?.remove('selected');
+        placeHolderOptionsMap[placeholderName] = [placeHolderOptionsMap[placeholderName][0], undefined];
+        return;
+    }
+    if (optionsContainer.dataset.repositioned !== '1') {
+        optionsContainer.dataset.repositioned = '1';
+        const inputRect = currentInput.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+        const preferredHeight = 200;
+        const margin = 8;
+
+        const spaceBelow = viewportHeight - inputRect.bottom;
+        const spaceAbove = inputRect.top;
+
+        optionsContainer.style.bottom = '';
+        optionsContainer.style.top = '';
+        optionsContainer.style.maxHeight = `${preferredHeight}px`;
+        optionsContainer.style.maxWidth = (inputRect.width - 30) + 'px';
+
+        if (spaceBelow >= preferredHeight || spaceBelow > spaceAbove) {
+            optionsContainer.style.top = `${inputRect.bottom + margin}px`;
+            if (spaceBelow < preferredHeight) {
+                optionsContainer.style.maxHeight = `${spaceBelow - (margin * 2)}px`;
+            }
+        } else {
+            optionsContainer.style.bottom = `${viewportHeight - inputRect.top + margin}px`;
+            if (spaceAbove < preferredHeight) {
+                optionsContainer.style.maxHeight = `${spaceAbove - (margin * 2)}px`;
+            }
+        }
+        optionsContainer.style.left = `${inputRect.left}px`;
+        optionsContainer.style.width = `${inputRect.width}px`;
+    }
+    optionsContainer.classList.add('visible');
+}
+
+function updateHighlight(input, allOptions, selectedOption, keyboard, placeholderName) {
+    allOptions.forEach(option => option.classList.remove('selected'));
+    let option = selectedOption || placeHolderOptionsMap[placeholderName]?.[1];
+    if (!option) {
+        option = keyboard === 'ArrowUp' ? allOptions[allOptions.length - 1] : allOptions[0];
+        option.classList.add('selected');
+        placeHolderOptionsMap[placeholderName] = [input, option]
+    } else {
+        if (keyboard === 'ArrowUp') {
+            option = option.previousElementSibling === null ? undefined : option.previousElementSibling;
+            option?.classList.add('selected');
+            placeHolderOptionsMap[placeholderName] = [input, option];
+        } else if (keyboard === 'ArrowDown') {
+            option = option.nextElementSibling === null ? undefined : option.nextElementSibling;
+            option?.classList.add('selected');
+            placeHolderOptionsMap[placeholderName] = [input, option];
+        } else {
+            //mouse
+            option.classList.add('selected');
+            placeHolderOptionsMap[placeholderName] = [input, option];
+        }
+    }
+    option?.scrollIntoView({block: 'nearest'});
+}
+
+function showPlaceholderDialog(profileIndex, rawPlaceholders, startButton) {
+    placeholderInputsEl.innerHTML = '';
+    placeHolderOptionsMap = {}
+    placeholderModalTabEls = []
+    placeholderModalTabFocusIndex = 0;
+    const placeholders = [];
+    for (let i = 0; i < 2; i++) {
+        if (!rawPlaceholders[i]) break;
+        const [name, options = ''] = rawPlaceholders[i].split('=');
+        placeholders.push({name: name, options: options.split(',')});
+    }
+    placeholders.forEach((p, index) => {
+        const group = document.createElement('div');
+        group.className = 'combo-box'
+        group.id = "placeholder-input-group-" + p.name;
+        const input = document.createElement('input');
+        placeholderModalTabEls.push(input);
+        placeHolderOptionsMap[p.name] = [input, undefined];
+        input.type = 'text'
+        input.id = "placeholder-input-" + p.name;
+        input.className = "placeholder-input";
+        input.name = p.name;
+        input.value = recentUsedMap.get(profileIndex)?.get(p.name) ?? (p.options?.[0] || '');
+        const label = document.createElement('label');
+        label.textContent = `${p.name}:`;
+        label.setAttribute('for', input.id);
+        const optionsContainer = document.createElement('div');
+        optionsContainer.className = 'options-container'
+        optionsContainer.id = "placeholder-optons-container-" + p.name;
+        (p.options || []).forEach(opt => {
+            const option = document.createElement('div');
+            option.className = 'option';
+            option.textContent = opt;
+            option.onclick = debounce((event) => {
+                input.value = option.textContent;
+                optionsContainer.classList.remove('visible');
+                placeHolderOptionsMap[p.name] = [input, undefined];
+                if (index === placeholders.length - 1) {
+                    placeholderOkBtn.click()
+                }
+            })
+            option.onmouseover = (event) => {
+                if (disableMouseEvents) {
+                    disableMouseEvents = false;
+                    return
+                }
+                updateHighlight(input, Array.from(optionsContainer.children), option, null, p.name);
+            }
+            optionsContainer.appendChild(option);
+        });
+        group.appendChild(label);
+        group.appendChild(input);
+        group.appendChild(optionsContainer);
+        input.onfocus = (e) => {
+            currentInput = e.target;
+        };
+        input.onclick = (e) => {
+            currentInput = e.target;
+            placeHolderOptionsMap[p.name] = [input, undefined];
+            placeholderModalTabFocusIndex = index;
+            repositionAndShowOptions(p.name, optionsContainer, false);
+        };
+        input.onkeydown = (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                if (placeHolderOptionsMap[p.name]?.[1]) {
+                    input.value = placeHolderOptionsMap[p.name][1].textContent;
+                }
+                if (index === placeholders.length - 1) {
+                    submitPlaceholder(profileIndex);
+                } else {
+                    repositionAndShowOptions(p.name, optionsContainer, false);
+                }
+            } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                disableMouseEvents = true;
+                event.preventDefault();
+                repositionAndShowOptions(p.name, optionsContainer, true);
+                updateHighlight(input, Array.from(optionsContainer.children), undefined, event.key, p.name);
+            } else if (event.key === 'Tab') {
+                placeHolderOptionsMap[p.name] = [input, undefined];
+                optionsContainer.classList.remove('visible');
+            }
+        }
+        input.oninput = (e) => {
+            currentInput = e.target;
+            placeHolderOptionsMap[p.name][1] = undefined;
+            repositionAndShowOptions(p.name, optionsContainer, true);
+        };
+        const dialogOnClick = (event) => {
+            if (event.target !== input) {
+                optionsContainer.classList.remove('visible');
+                if (placeHolderOptionsMap[p.name]) placeHolderOptionsMap[p.name][1] = undefined;
+            }
+        }
+        placeholderDialogOnClickHandler.push(dialogOnClick);
+        placeholderDialogEl.addEventListener('click', dialogOnClick);
+        placeholderInputsEl.appendChild(group);
+    });
+
+    placeholderDialogEl.style.visibility = 'hidden';
+    placeholderDialogEl.style.display = 'block';
+    placeholderOverlayEl.classList.add('active');
+
+    const buttonRect = startButton.getBoundingClientRect();
+    const dialogRect = placeholderDialogEl.getBoundingClientRect();
+    const viewportHeight = document.documentElement.clientHeight;
+    const viewportWidth = document.documentElement.clientWidth;
+
+    let top = buttonRect.bottom + 8;
+    let left = buttonRect.left;
+
+    if (top + dialogRect.height >= viewportHeight) {
+        top = buttonRect.top - dialogRect.height - 8;
+    }
+    if (left + dialogRect.width >= viewportWidth) {
+        left = viewportWidth - dialogRect.width - 20;
+    }
+    if (left < 10) left = 10;
+    if (top < 10) top = 10;
+
+    placeholderDialogEl.style.top = `${top}px`;
+    placeholderDialogEl.style.left = `${left}px`;
+
+    placeholderDialogEl.style.visibility = 'visible'
+    placeholderInputsEl.querySelector('input')?.focus();
+
+    placeholderModalTabEls.push(placeholderOkBtn);
+    placeholderOkBtn.onclick = () => {
+        submitPlaceholder(profileIndex)
+    };
+    placeholderOkBtn.onkeydown = debounce((event) => {
+        if (event.keyCode === 13) {
+            submitPlaceholder(profileIndex);
+        }
+    })
+}
+
+
+function submitPlaceholder(profileIndex) {
+    const selectedPlaceholders = {};
+    Object.entries(placeHolderOptionsMap).forEach(([placeholder, inputAndOption]) => {
+        if (inputAndOption[1]) {
+            inputAndOption[0].value = inputAndOption[1].textContent;
+        }
+        selectedPlaceholders[placeholder] = inputAndOption[0].value;
+        inputAndOption[1]?.parentNode?.classList.remove('visible');
+        inputAndOption[1] = undefined;
+    })
+    recentUsedMap.set(profileIndex, new Map(Object.entries(selectedPlaceholders)));
+    window.electronAPI.startProxyProfile(profileIndex, selectedPlaceholders);
+    hidePlaceholderDialog();
+}
+
+function hidePlaceholderDialog() {
+    placeholderOverlayEl.classList.remove("active");
+    placeholderDialogEl.style.display = 'none';
+    while (placeholderDialogOnClickHandler.length > 0) {
+        placeholderDialogEl.removeEventListener('click', placeholderDialogOnClickHandler.pop());
+    }
+}
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        let showList = false;
+        Object.values(placeHolderOptionsMap).forEach((inputAndOption) => {
+            if (inputAndOption[1]) {
+                showList = true;
+                inputAndOption[1].classList.remove('selected');
+                inputAndOption[1] = undefined;
+            }
+            if (inputAndOption[0]?.nextElementSibling?.classList.contains('visible')) {
+                showList = true;
+                inputAndOption[0].nextElementSibling.classList.remove('visible');
+            }
+        })
+        if (!showList) hidePlaceholderDialog();
+    } else if (event.key === 'Tab') {
+        if (placeholderOverlayEl.classList.contains("active")) {
+            event.preventDefault();
+            if (event.shiftKey) {
+                placeholderModalTabFocusIndex = placeholderModalTabFocusIndex === 0 ? placeholderModalTabEls.length - 1 : placeholderModalTabFocusIndex - 1;
+            } else {
+                placeholderModalTabFocusIndex = placeholderModalTabFocusIndex >= placeholderModalTabEls.length - 1 ? 0 : placeholderModalTabFocusIndex + 1;
+            }
+            placeholderModalTabEls[placeholderModalTabFocusIndex].focus();
+        }
+    }
+});
+
+placeholderOverlayEl.addEventListener('click', (event) => {
+    if (!communicating && event.target === placeholderOverlayEl) {
+        hidePlaceholderDialog();
+    }
+});
 
 document.getElementById('btnDirectConnect').addEventListener('click', debounce(() => {
     window.electronAPI.startProxyProfile(-1);
 }));
 
-document.getElementById('btnHelp').addEventListener('click', debounce(() => {
-    window.electronAPI.openHelp();
+document.getElementById('btnMainMoreOptions').addEventListener('click', debounce(async () => {
+    communicating = true;
+    placeholderOverlayEl.classList.add("active")
+    await window.electronAPI.openMainMoreOptions();
+    communicating = false;
+    placeholderOverlayEl.classList.remove("active")
 }));
 
 document.getElementById('btnEditConfig').addEventListener('click', debounce(() => {
@@ -166,15 +488,15 @@ document.getElementById('btnStopProxy').addEventListener('click', debounce(() =>
     window.electronAPI.stopProxyServers();
 }));
 
-
-window.electronAPI.onConfigUpdated((config, activeProfile) => {
+window.electronAPI.onConfigUpdated((config, status) => {
     currentConfigData = config;
-    updateStatusDisplay({
-        activeProfileIndex: activeProfile,
-        httpPort: config.appPort?.[0],
-        httpsPort: config.appPort?.[1]
-    });
+    recentUsedMap.clear()
     renderProfiles();
+    updateStatusDisplay({
+        httpPort: config.appPort?.[0],
+        httpsPort: config.appPort?.[1],
+        ...status
+    });
 });
 
 window.electronAPI.onProxyStatusUpdate((status) => {

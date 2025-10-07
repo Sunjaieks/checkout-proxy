@@ -3,26 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <title>Checkout-Proxy</title>
-    <meta http-equiv="Content-Security-Policy" content="script-src 'self'; style-src 'self' 'unsafe-inline';">
-    <link rel="stylesheet" href="./style/styles.css">
+    <meta content="script-src 'self'; style-src 'self' 'unsafe-inline';" http-equiv="Content-Security-Policy">
+    <link href="./style/styles.css" rel="stylesheet">
 </head>
 <body>
 <div class="container">
     <div class="header">
         <h1 class="title">Checkout-Proxy</h1>
         <div class="status-info">
-            <p id="activeProfileDisplay" style="display: flex; align-items: center; justify-content: flex-end">
-                <span style="margin-right: 4px">Active: </span>
-                <span id="activeProfileName" class="active-profile-name">None</span>
-                <span id="activeProfileIndicator" class="indicator"></span>
+            <p style="display: flex; flex-direction: column;">
+                <span id="activeProfile" style="display: flex; align-items: center; justify-content: flex-end">
+                    <span style="margin-right: 4px">Active: </span>
+                    <span class="active-profile-name" id="activeProfileName">None</span>
+                    <span class="indicator" id="activeProfileIndicator"></span>
+                </span>
+                <span id="activePlaceholder"></span>
             </p>
-            <p style="font-size: 0.8em; color: grey;">proxy port: <span id="httpPort">N/A</span>,<span id="httpsPort">N/A</span></p>
+            <p id="app-port">proxy port: <span id="httpPort">N/A</span>,<span id="httpsPort">N/A</span>
+            </p>
             <p id="app-version-display">Version: loading...</p>
         </div>
     </div>
 
     <div class="buttons-panel">
-        <button id="btnHelp">Help</button>
+        <button id="btnMainMoreOptions">More</button>
         <button id="btnEditConfig">Edit Config</button>
         <button id="btnImportConfig">Import Config</button>
         <button id="btnExportConfig">Export Config</button>
@@ -30,11 +34,22 @@
         <button id="btnStopProxy">Stop</button>
     </div>
 
-    <p id="statusMessage" style="margin: 10px 5px;font-size: 0.8em; color: grey;"></p>
-    <div id="profilesList" class="profiles-area">
+    <p id="statusMessage"></p>
+    <div class="profiles-area" id="profilesList">
         <!-- Profiles will be listed here -->
     </div>
 </div>
-<script type="module" src="./src/renderer.js"></script>
+<div class="overlay" id="placeholder-overlay">
+    <div class="popover" id="placeholder-dialog">
+        <div class="popover-content">
+            <div id="placeholder-inputs">
+            </div>
+        </div>
+        <div class="popover-actions">
+            <div id="placeholder-ok-btn" tabindex="0">OK</div>
+        </div>
+    </div>
+</div>
+<script src="./src/renderer.js" type="module"></script>
 </body>
 </html>

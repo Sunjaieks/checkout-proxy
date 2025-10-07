@@ -1,5 +1,5 @@
 [ req ]
-distinguished_name = req_distinguished_name
+distinguishedname = reqdistinguished_name
 x509_extensions = v3_ca
 prompt = no
 

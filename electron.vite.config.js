@@ -32,6 +32,7 @@ export default defineConfig(({command, mode}) => {
             }
         },
         renderer: {
+            // plugins: [externalizeDepsPlugin()],
             build: {
                 minify: isProduction,
                 rollupOptions: {
@@ -39,6 +40,7 @@ export default defineConfig(({command, mode}) => {
                         main: resolve(__dirname, 'src/renderer/index.html'),
                         help: resolve(__dirname, 'src/renderer/help.html'),
                         editor: resolve(__dirname, 'src/renderer/editor.html'),
+                        profileEditor: resolve(__dirname, 'src/renderer/profile-editor.html'),
                     },
                 },
             },
