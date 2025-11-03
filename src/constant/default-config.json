@@ -8,7 +8,7 @@
     {
       "name": "9500-default",
       "proxy": {
-        "proxyHost": "remote.proxy.domain",
+        "proxyHost": "http://remote.proxy.domain:80",
         "proxyPort": 9500,
         "hostUsingProxy": [
           ".aaabbbb.com",

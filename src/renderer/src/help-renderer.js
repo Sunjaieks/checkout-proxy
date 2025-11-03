@@ -1,4 +1,4 @@
-import {HELP_WINDOW_NAME} from "../../constant/constant";
+import {HELP_WINDOW_NAME} from "../../constant/constant.js";
 
 function basicMarkdownToHtml(mdText) {
     // 1. Initialize state variables

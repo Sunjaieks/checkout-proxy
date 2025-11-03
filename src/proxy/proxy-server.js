@@ -7,7 +7,7 @@ import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
 import {URL} from 'node:url';
-import {CustomHttpAgent} from './agent.js';
+import {pipeline} from 'node:stream';
 import {
     gethttpFixedRule,
     gethttpsFixedRule,
@@ -15,16 +15,19 @@ import {
     getWildcardRule,
     inHostBypassProxy,
     inHostUsingProxy,
+    isHttp,
     isLocalHost,
+    isRelativePath
 } from '../util/sharedUtil.js'
-import {logError, logInfo, rootCertPath, rootKeyPath} from "../util/nodeUtil";
+import {formatUrl, logError, logInfo, rootCertPath, rootKeyPath} from "../util/nodeUtil.js";
 import {handleServerError} from "../main/main.js";
 import fs from "fs";
 import {addShutdown} from "./http-shutdown.js";
 import forge from "node-forge";
 import tls from 'node:tls';
-import {LRUCache} from "./cache";
-import {ASK_TO_RENEW_CA, ASK_TO_RENEW_CA_LONG, CERT_COMMON_NAME} from "../constant/constant";
+import {LRUCache} from "./cache.js";
+import {ASK_TO_RENEW_CA, ASK_TO_RENEW_CA_LONG, CERT_COMMON_NAME, IGNORED_ERROR_CODE} from "../constant/constant.js";
+import {CustomHttpAgent} from "./agent.js";
 
 let fallbackRootCASubjectKeyIdentifier;
 let fallbackRootCA
@@ -36,13 +39,18 @@ let rootCA
 let rootCAKey;
 let rootCAString;
 let rootCAKeyString;
+
 const certCache = new LRUCache(10000, 1000 * 3600 * 240); // 10,000 entries, 10 day TTL
-const agentCache = new LRUCache(100, 1000 * 3600); // 100 entries, 1h ttl
+const agentCache = new LRUCache(100, 1000 * 120, item => item.destroy?.()); // 100 entries, 1min ttl
 
 const SERVER_REQUEST_TIMEOUT_SEC = 1200; // seconds
 
 export function clearCertCache() {
     certCache.clear();
+}
+
+export function clearAgentCache() {
+    agentCache.clear();
 }
 
 export function generateRootCA() {
@@ -89,7 +97,7 @@ export async function writeRootCA(key, cert) {
         fs.writeFileSync(rootKeyPath, keyPem.replaceAll('\r\n', '\n'));
     } catch (error) {
         logError('write certificate error:', error);
-        throw {message: `Failed to save Root CA: ${error.message || 'Unknown error occurred.'} ${ASK_TO_RENEW_CA} Current CA will be used continuously.`};
+        throw new Error(`Failed to save Root CA: ${error.message || 'Unknown error occurred.'} ${ASK_TO_RENEW_CA} Current CA will be used continuously.`);
     }
 }
 
@@ -117,7 +125,7 @@ export function loadRootCA(key, cert, keyIdentifier) {
         fallbackRootCAString = forge.pki.certificateToPem(fallbackRootCA);
         fallbackRootCAKeyString = forge.pki.privateKeyToPem(fallbackRootCAKey);
         fallbackRootCASubjectKeyIdentifier = keyIdentifier;
-        throw {message: `Failed to load Root CA: ${e.message || 'Unknown error occurred'}. A fallback CA will be used tentatively. ${ASK_TO_RENEW_CA_LONG}`};
+        throw new Error(`Failed to load Root CA: ${e.message || 'Unknown error occurred'}. A fallback CA will be used tentatively. ${ASK_TO_RENEW_CA_LONG}`);
     }
     return rootCA;
 }
@@ -201,13 +209,12 @@ const getSNICallback = mainWindow => {
             logError(`Error in SNICallback for ${servername}:`, err);
             // cb(err); // This might crash the server, better to log and potentially use a default context or fail gracefully
             // To avoid crashing, don't call cb(err) directly if generateServerCertificate can throw.
-            // For now, let it fail.
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('proxy-status-update', {
                     error: `Cannot generate certificate for ${servername}: ${err.message}.`
                 });
             }
-            cb(err);
+            cb(null, tls.createSecureContext({}));
         }
     }
 }
@@ -272,20 +279,34 @@ const processBypassCors = (requestOrigin, responseHeaders) => {
     removeHeaderWithIgnoreCase(responseHeaders, 'x-frame-options')
 }
 
-const getCustomHttpAgent = (protocol, hostname, port) => {
-    return agentCache.get(`${protocol}|${hostname}|${port}`) ??
-        agentCache.set(`${protocol}|${hostname}|${port}`, new CustomHttpAgent(`${protocol}:`, hostname, port, {
+const getCustomHttpAgent = (protocol, proxyUrl) => {
+    const agentUrlFactor = getUrlFactor(proxyUrl);
+    if (!agentUrlFactor) return undefined;
+    return agentCache.get(`${protocol}|${proxyUrl}`) ??
+        agentCache.set(`${protocol}|${proxyUrl}`, new CustomHttpAgent(`${protocol}:`, agentUrlFactor.host, agentUrlFactor.port, {
             keepAlive: true,
+            keepAliveMsecs: 8000,
         }))
 }
+
+const getConnectionErrorHandler = (connectionEstablished, cliSoc, hostname, port) => (err) => {
+    if (connectionEstablished[0]) return;
+    logError(`[HTTP Proxy][${hostname}:${port}] Connection to target server failed: ${JSON.stringify(err)}`);
+    if (cliSoc.writable && !cliSoc.destroyed) {
+        cliSoc.write(`HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\n\r\n` +
+            `sever socket error occurred in http proxy when accessing ${hostname}:${port}!\nerror:${JSON.stringify(err)}\r\n\r\n`);
+        cliSoc.end();
+    }
+    if (!cliSoc.destroyed) cliSoc.destroy();
+};
 
 export const getStartServers = (mainWindow) => {
     const sNICallback = getSNICallback(mainWindow);
     const usingFallbackCert = !rootCAKeyString || !rootCAString
     const localCAKeyString = usingFallbackCert ? fallbackRootCAKeyString : rootCAKeyString;
     const localCAString = usingFallbackCert ? fallbackRootCAString : rootCAString;
-    return (appPort, currentProfile) => new Promise((resolve, reject) => {
-        agentCache.clear();
+    return (appPort, currentProfile) => new Promise((resolve) => {
+        clearAgentCache()
         let startedServers = 0;
         const httpPort = appPort[0];
         const httpsPort = appPort[1];
@@ -298,55 +319,56 @@ export const getStartServers = (mainWindow) => {
             SNICallback: sNICallback,
         }));
         httpServer.on('connect', (cliReq, cliSoc, cliHead) => {
-            const url = new URL(`http://${cliReq.url}`);
+            const connectionEstablished = [false];
+            const url = new URL(`http://${formatUrl(cliReq.url)}`);
             let port = url.port || '443';
             let hostname = url.hostname;
             logInfo(`[HTTP Proxy][${hostname}:${port}] CONNECT request received.`);
             if (profile !== null) {
                 if (gethttpsFixedRule(profile)[`${hostname}:${port}`] || getWildcardRule(gethttpsFixedRule(profile), hostname, port)) {
                     port = httpsPort;
-                    hostname = 'localhost';
+                    hostname = '127.0.0.1';
                 } else if (inHostUsingProxy(profile, hostname) && !inHostBypassProxy(profile, hostname)) {
                     port = httpsPort;
-                    hostname = 'localhost';
+                    hostname = '127.0.0.1';
                 }
             }
-            const svrSoc = net
+            let svrSoc;
+            cliSoc
+                .on('error', (err) => {
+                    if (!IGNORED_ERROR_CODE[err.code]) {
+                        logError(`[HTTP Proxy][${hostname}:${port}] client to http proxy socket error occurred:${JSON.stringify(err)}`);
+                    }
+                    if (!svrSoc.destroyed) svrSoc.destroy();
+                })
+            const connectionErrorHandler = getConnectionErrorHandler(connectionEstablished, cliSoc, hostname, port)
+            svrSoc = net
                 .connect(port, hostname, () => {
+                    connectionEstablished[0] = true;
+                    svrSoc.removeListener('error', connectionErrorHandler);
                     cliSoc.write('HTTP/1.1 200 Connection Established\r\n' +
                         'Proxy-agent: Checkout-Proxy\r\n\r\n');
                     if (cliHead && cliHead.length > 0) svrSoc.write(cliHead);
-                    svrSoc.pipe(cliSoc).on('error', err => {
-                        logError(`[HTTP Proxy][${hostname}:${port}] Error piping serverSocket to clientSocket:${JSON.stringify(err)}`);
-                        cliSoc.destroy(err);
-                        svrSoc.destroy(err);
+                    pipeline(cliSoc, svrSoc, (err) => {
+                        if (err && !IGNORED_ERROR_CODE[err.code]) {
+                            logError(`[HTTP Proxy][${hostname}:${port}] Error piping clientSocket to serverSocket:${JSON.stringify(err)}`);
+                        }
                     });
-                    cliSoc.pipe(svrSoc).on('error', err => {
-                        logError(`[HTTP Proxy][${hostname}:${port}] Error piping clientSocket to serverSocket:${JSON.stringify(err)}`);
-                        cliSoc.destroy(err);
-                        svrSoc.destroy(err);
+                    pipeline(svrSoc, cliSoc, (err) => {
+                        if (err) {
+                            logError(`[HTTP Proxy][${hostname}:${port}] Error piping serverSocket to clientSocket:${JSON.stringify(err)}`);
+                        }
                     });
                 })
-            svrSoc.on('error', (err) => {
-                logError(`[HTTP Proxy][${hostname}:${port}] server socket error occurred:${JSON.stringify(err)}`);
-                if (cliSoc.writable && !cliSoc.destroyed) {
-                    cliSoc.write(`HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\n\r\n` +
-                        `sever socket error occurred in http proxy when accessing ${hostname}:${port}!\nerror:${JSON.stringify(err)}\r\n\r\n`);
-                    cliSoc.end();
-                }
-                svrSoc.destroy();
-            })
-            svrSoc.on('close', () => cliSoc.destroy());
-            cliSoc
-                .on('error', (err) => {
-                    if (err.code !== 'ECONNRESET') {
-                        logError(`[HTTP Proxy][${hostname}:${port}] client to http proxy socket error occurred:${JSON.stringify(err)}`);
-                    }
-                    svrSoc.destroy(err);
-                })
-            cliSoc.on('close', () => svrSoc.destroy());
+            svrSoc.on('error', connectionErrorHandler)
         });
         httpServer.on('request', (clientReq, clientRes) => {
+            if (!isHttp(clientReq.url)) {
+                logError(`[HTTP Proxy] unsupported request:${clientReq.url}`);
+                clientRes.writeHead(403, {'Content-Type': 'text/plain'});
+                clientRes.end('Forbidden: only http/https schemes allowed through this proxy.');
+                return;
+            }
             const {host, port, pathname, search} = new URL(clientReq.url);
             const path = pathname + search;
             let targetHost = host.split(':')[0];
@@ -397,8 +419,7 @@ export const getStartServers = (mainWindow) => {
             const options = {...hackedOptions, rejectUnauthorized: false}
             if (typeof options.timeout === 'undefined') options.timeout = SERVER_REQUEST_TIMEOUT_SEC * 1000;
             if (options.proxyUrl) {
-                const agentUrlFactor = getUrlFactor(options.proxyUrl);
-                options.agent = agentUrlFactor ? getCustomHttpAgent(options.protocol, agentUrlFactor.host, agentUrlFactor.port) : undefined;
+                options.agent = getCustomHttpAgent(options.protocol, options.proxyUrl);
             }
             const httpOrHttps = options?.protocol === 'https' ? https : http;
             ['protocol', 'proxyUrl'].forEach(key => delete options[key]);
@@ -412,10 +433,10 @@ export const getStartServers = (mainWindow) => {
                 const hackedResponse = (mapping?.hackResponse || []).reduce((acc, f) => f(hackedOptions, acc), originalResponse)
 
                 clientRes.writeHead(hackedResponse?.code, hackedResponse?.headers);
-
-                proxyRes.pipe(clientRes).on('error', (err) => {
-                    logError(`[HTTP Proxy][${targetHost}:${targetPort}] Error piping target response to http proxy: ${JSON.stringify(err)}`);
-                    clientRes.destroy(err);
+                pipeline(proxyRes, clientRes, (err) => {
+                    if (err) {
+                        logError(`[HTTP Proxy][${targetHost}:${targetPort}] Error piping target response to http proxy: ${JSON.stringify(err)}`);
+                    }
                 });
             });
             proxyReq.on('error', (err) => {
@@ -426,40 +447,36 @@ export const getStartServers = (mainWindow) => {
                         message: err?.message
                     })}`);
                 }
-                proxyReq.destroy();
-
             });
             proxyReq.on('timeout', () => {
                 if (!clientRes.headersSent) {
                     clientRes.writeHead(504, {'Content-Type': 'text/plain'}); // Gateway Timeout
                     clientRes.end(`Http Proxy error: socket timeout connecting to target ${targetHost}:${targetPort}`);
                 }
-                proxyReq.destroy();
+                proxyReq?.destroy();
             });
-            clientReq.pipe(proxyReq).on('error', (err) => {
-                // proxyReq might have already sent headers if error is on clientReq side after connection
-                if (!clientRes.headersSent) {
-                    clientRes.writeHead(500, {'Content-Type': 'text/plain'});
-                    clientRes.end(`Http Proxy error piping client request.\nerror:${JSON.stringify({
-                        code: err?.code,
-                        message: err?.message
-                    })}`);
+            pipeline(clientReq, proxyReq, (err) => {
+                if (err) {
+                    logError(`[HTTPS Proxy][${targetHost}:${targetPort}] Error piping original request to proxy request: ${JSON.stringify(err)}`);
                 }
-                clientReq.destroy(err);
             });
         });
         httpServer.on('clientError', (err, soc) => {
             logError(`[HTTP Proxy] clientError occurred:${JSON.stringify(err)}`);
-            if (soc.writable && !soc.destroyed) {
-                soc.end(`HTTP/1.1 400 http proxy clientError error occurred:${JSON.stringify({
-                    code: err?.code,
-                    message: err?.message
-                })}\r\n\r\n`);
-                soc.destroy();
-            }
+            if (soc && !soc.destroyed) soc.destroy();
         })
         httpServer.on('error', (err) => handleServerError(err, 'HTTP', httpPort));
-        httpServer.listen(httpPort, '::', () => {
+        httpServer.on('upgrade', (req, socket, head) => {
+            logInfo(`[HTTP Proxy][${req.url}] upgrade request received.`);
+            if (!isHttp(req.url) && !isRelativePath(req.url)) {
+                socket.write('HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n\r\nOnly http/https upgrade targets allowed.\r\n');
+                socket.destroy();
+                return;
+            }
+            socket.write('\'HTTP/1.1 501 Not Implemented\r\nContent-Type: text/plain\r\n\r\nUpgrade not implemented.\r\n');
+            socket.destroy();
+        });
+        httpServer.listen(httpPort, '127.0.0.1', () => {
             logInfo(`HTTP Proxy server listening on localhost:${httpPort}`);
             startedServers++;
             if (startedServers === 2) {
@@ -468,6 +485,12 @@ export const getStartServers = (mainWindow) => {
         });
 
         httpsServer.on('request', (clientReq, clientRes) => {
+            if (!isRelativePath(clientReq.url) && !isHttp(clientReq.url)) {
+                logError(`[HTTPS Proxy] unsupported request:${clientReq.url}`);
+                clientRes.writeHead(403, {'Content-Type': 'text/plain'});
+                clientRes.end('Forbidden: only http/https schemes allowed through this proxy.');
+                return;
+            }
             const originalHost = clientReq.headers[findHeaderWithIgnoreCase(clientReq.headers, 'host')];
             let targetHost = originalHost?.split(':')[0] || originalHost;
             let targetPort = originalHost?.split(':')[1];
@@ -514,8 +537,7 @@ export const getStartServers = (mainWindow) => {
             const options = {...hackedOptions, rejectUnauthorized: false}
             if (typeof options.timeout === 'undefined') options.timeout = SERVER_REQUEST_TIMEOUT_SEC * 1000;
             if (options.proxyUrl) {
-                const agentUrlFactor = getUrlFactor(options.proxyUrl);
-                options.agent = agentUrlFactor ? getCustomHttpAgent(options.protocol, agentUrlFactor.host, agentUrlFactor.port) : undefined;
+                options.agent = getCustomHttpAgent(options.protocol, options.proxyUrl);
             }
             const httpOrHttps = options?.protocol === 'http' ? http : https;
             ['protocol', 'proxyUrl'].forEach(key => delete options[key]);
@@ -528,12 +550,12 @@ export const getStartServers = (mainWindow) => {
                 const originalResponse = {code: proxyRes.statusCode, headers: responseHeaders};
                 const hackedResponse = (mapping?.hackResponse || []).reduce((acc, f) => f(hackedOptions, acc), originalResponse)
                 clientRes.writeHead(hackedResponse?.code, hackedResponse?.headers);
-                proxyRes.pipe(clientRes).on('error', (err) => {
-                    logError(`[HTTPS Proxy][${targetHost}:${targetPort}] Error piping target response to https proxy: ${JSON.stringify(err)}`);
-                    clientRes.destroy(err);
+                pipeline(proxyRes, clientRes, (err) => {
+                    if (err) {
+                        logError(`[HTTPS Proxy][${targetHost}:${targetPort}] Error piping target response to proxy response: ${JSON.stringify(err)}`);
+                    }
                 });
             });
-
             proxyReq.on('error', (err) => {
                 const errorResponseHeaders = {'Content-Type': 'text/plain'};
                 if (mapping?.bypassCors) {
@@ -552,26 +574,18 @@ export const getStartServers = (mainWindow) => {
                         message: err?.message
                     })}`);
                 }
-                proxyReq.destroy();
             });
             proxyReq.on('timeout', () => {
                 if (!clientRes.headersSent) {
                     clientRes.writeHead(504, {'Content-Type': 'text/plain'}); // Gateway Timeout
                     clientRes.end(`Https Proxy error: socket timeout connecting to target ${targetHost}:${targetPort}`);
                 }
-                proxyReq.destroy();
+                proxyReq?.destroy();
             });
-            clientReq.pipe(proxyReq).on('error', (err) => {
-                logError(`[HTTPS Proxy][${targetHost}:${targetPort}] Error piping http proxy request to target request: ${JSON.stringify(err)}`);
-                // proxyReq might have already sent headers if error is on clientReq side after connection
-                if (!clientRes.headersSent) {
-                    clientRes.writeHead(500, {'Content-Type': 'text/plain'});
-                    clientRes.end(`Proxy error piping client request.\nerror:${JSON.stringify({
-                        code: err?.code,
-                        message: err?.message
-                    })}`);
+            pipeline(clientReq, proxyReq, (err) => {
+                if (err && !IGNORED_ERROR_CODE[err.code]) {
+                    logError(`[HTTPS Proxy][${targetHost}:${targetPort}] Error piping http proxy request to target request: ${JSON.stringify(err)}`);
                 }
-                clientReq.destroy(err);
             });
         });
         httpsServer.on('error', (err) => {
@@ -579,15 +593,9 @@ export const getStartServers = (mainWindow) => {
         });
         httpsServer.on('clientError', (err, soc) => {
             logError(`[HTTPS Proxy] clientError error occurred:${JSON.stringify(err)}`);
-            if (soc.writable && !soc.destroyed) {
-                soc.end(`HTTP/1.1 400 http proxy clientError error occurred:${JSON.stringify({
-                    code: err?.code,
-                    message: err?.message
-                })}\r\n\r\n`);
-                soc.destroy();
-            }
+            if (soc && !soc.destroyed) soc.destroy();
         })
-        httpsServer.listen(httpsPort, '::', () => {
+        httpsServer.listen(httpsPort, '127.0.0.1', () => {
             logInfo(`Local HTTPS MITM server listening on localhost:${httpsPort}`);
             startedServers++;
             if (startedServers === 2) {

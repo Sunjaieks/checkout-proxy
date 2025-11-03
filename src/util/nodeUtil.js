@@ -3,7 +3,8 @@ import {fileURLToPath} from 'url';
 import {app} from "electron";
 import os from "node:os";
 import * as sudo from "@vscode/sudo-prompt";
-import {CERT_COMMON_NAME} from "../constant/constant";
+import {CERT_COMMON_NAME} from "../constant/constant.js";
+import net from "node:net";
 
 export const getDirname = (metaUrl) => path.dirname(fileURLToPath(metaUrl));
 export const getFilename = (metaUrl) => fileURLToPath(metaUrl);
@@ -73,3 +74,13 @@ export function createOsFunction(macFunction, winFunction) {
     }
 }
 
+export function formatUrl(hostAndPort) {
+    const colonCount = [...hostAndPort].filter(c => c === ':').length;
+    if (colonCount < 2 || hostAndPort.includes('[')) return hostAndPort;
+    const lstColon = hostAndPort.lastIndexOf(':');
+    const firstPart = hostAndPort.slice(0, lstColon);
+    if (net.isIPv6(firstPart)) {
+        return `[${firstPart}]${hostAndPort.slice(lstColon)}`;
+    }
+    return hostAndPort;
+}

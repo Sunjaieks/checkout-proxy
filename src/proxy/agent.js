@@ -6,8 +6,10 @@ import {URL} from "node:url";
 import {once} from "node:events";
 import tls from "node:tls";
 import assert from "node:assert";
+import {logError} from "../util/nodeUtil.js";
 
 const INTERNAL = Symbol('AgentBaseInternalState');
+const DESTROYED = Symbol('DestroyedState');
 
 export class CustomHttpAgent extends http.Agent {
     static parseProxyResponse(socket) {
@@ -99,9 +101,14 @@ export class CustomHttpAgent extends http.Agent {
         });
     }
 
+    static createFakeSocket() {
+        return new net.Socket({writable: false});
+    }
+
     constructor(protocol, host, port, opts) {
         super(opts);
         this[INTERNAL] = {protocol};
+        this[DESTROYED] = false;
         this.connectOpts = {
             ALPNProtocols: ['http/1.1'],
             host,
@@ -130,30 +137,36 @@ export class CustomHttpAgent extends http.Agent {
         // alternative is to add it as a private property of this class but that
         // will break TypeScript subclassing.
         if (!this.sockets[name]) {
-            // @ts-expect-error `sockets` is readonly in `@types/node`
             this.sockets[name] = [];
         }
-        const fakeSocket = new net.Socket({writable: false});
+
+        const fakeSocket = CustomHttpAgent.createFakeSocket();
         this.sockets[name].push(fakeSocket);
-        // @ts-expect-error `totalSocketCount` isn't defined in `@types/node`
+
         this.totalSocketCount++;
         return fakeSocket;
     }
 
     decrementSockets(name, socket) {
-        if (!this.sockets[name] || socket === null) {
+        const socketsArr = this.sockets[name];
+        if (!socket || !socketsArr) {
             return;
         }
-        const sockets = this.sockets[name];
-        const index = sockets.indexOf(socket);
+        if (socketsArr.length < 1) {
+            delete this.sockets[name];
+        }
+        const index = socketsArr.indexOf(socket);
         if (index !== -1) {
-            sockets.splice(index, 1);
-            // @ts-expect-error  `totalSocketCount` isn't defined in `@types/node`
+            socketsArr.splice(index, 1);
             this.totalSocketCount--;
-            if (sockets.length === 0) {
-                // @ts-expect-error `sockets` is readonly in `@types/node`
+            if (socketsArr.length === 0) {
                 delete this.sockets[name];
             }
+        }
+        try {
+            if (socket.__isFake) socket.destroy();
+        } catch (e) {
+            logError(`Error occurred while destroying fake socket:`, e)
         }
     }
 
@@ -339,7 +352,7 @@ export class CustomHttpAgent extends http.Agent {
         // See: https://hackerone.com/reports/541502
         socket.destroy();
 
-        const fakeSocket = new net.Socket({writable: false});
+        const fakeSocket = CustomHttpAgent.createFakeSocket();
         fakeSocket.readable = true;
 
         // Need to wait for the "socket" event to re-play the "data" events.

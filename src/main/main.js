@@ -1,4 +1,11 @@
-import {clearCertCache, generateRootCA, getStartServers, loadRootCA, writeRootCA} from "../proxy/proxy-server.js";
+import {
+    clearAgentCache,
+    clearCertCache,
+    generateRootCA,
+    getStartServers,
+    loadRootCA,
+    writeRootCA
+} from "../proxy/proxy-server.js";
 import DEFAULT_CONFIG from "../constant/default-config.json" with {type: "json"};
 import {
     checkConfig,
@@ -32,11 +39,19 @@ import {
     HELP_WINDOW_NAME,
     PROFILE_EDITOR_WINDOW_NAME,
     RESTART
-} from "../constant/constant";
+} from "../constant/constant.js";
 import os from "node:os";
-import {systemProxyManager} from "../proxy/system-proxy";
-import {compressToObject, restoreFromCompressedObject} from "../generator/generator";
+import {systemProxyManager} from "../proxy/system-proxy.js";
+import {compressToObject, restoreFromCompressedObject} from "../generator/generator.js";
+import * as dns from "node:dns";
 
+app.commandLine.appendSwitch('disable-http2');
+app.commandLine.appendSwitch('disable-http-cache');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('dns-result-order', 'ipv4first')
+dns.setDefaultResultOrder('ipv4first');
+
+let temporarySession;
 let mainWindow;
 let editorWindow;
 let profileEditorWindow;
@@ -49,10 +64,10 @@ let reusableHackFunctions = {};
 let activeProfileIndex = -9;
 let decided = {};
 let startServers;
-let blockerId;
 let oldIndexAndDecided = [-9, {}];
 let firstRun = true;
 
+const partition = 'temporary-session';
 const userDataPath = getUserDataPath();
 const CONFIG_FILE_NAME = 'checkout-proxy-config-v1.json';
 const USER_DEFAULT_CONFIG_FILE_NAME = 'checkout-proxy-user-default-config-v1.json';
@@ -60,6 +75,7 @@ const userDefaultConfigFilePath = path.join(userDataPath, USER_DEFAULT_CONFIG_FI
 const configFilePath = path.join(userDataPath, CONFIG_FILE_NAME);
 
 const afterStopServer = () => {
+    oldIndexAndDecided = [-9, {}]
     activeProfileIndex = -9; // Mark no profile as active
     decided = {};
 }
@@ -114,6 +130,7 @@ async function stopServers() {
 
         const checkDone = () => {
             if (httpStopped && httpsStopped) {
+                clearAgentCache()
                 logInfo("All servers stopped.");
                 httpServer = null;
                 httpsServer = null;
@@ -187,12 +204,15 @@ function addCommandToClipboard(downloadPath) {
 
 function createMainWindow(extraTask) {
     mainWindow = new BrowserWindow({
-        width: 700,
+        width: 650,
         height: 700,
         resizable: false,
         fullscreenable: false,
         autoHideMenuBar: true,
         webPreferences: {
+            devTools: !app.isPackaged,
+            spellcheck: false,
+            partition,
             preload: path.join(__dirname, '../preload/preload.js'),
             contextIsolation: true,
             nodeIntegration: false
@@ -233,7 +253,12 @@ const stopServerTask = (message) => async () => {
     }
 }
 
+const clearPartialData = async () => {
+    return Promise.all([temporarySession.clearStorageData(), temporarySession.clearCache(), temporarySession.clearHostResolverCache()])
+}
+
 app.whenReady().then(() => {
+    temporarySession = session.fromPartition(partition, {cache: false});
     createMainWindow(async () => {
         try {
             const ca = loadRootCA()
@@ -256,20 +281,22 @@ app.whenReady().then(() => {
 
     powerMonitor.on('suspend', async () => {
         logInfo('System is about to suspend.');
-        if (activeProfileIndex !== -9) {
-            oldIndexAndDecided = [activeProfileIndex, decided];
-            await stopServerTask('Proxy servers stopped due to system hibernation.')();
-        }
+        oldIndexAndDecided = [activeProfileIndex, decided];
+        await clearPartialData();
     });
 
     powerMonitor.on('resume', async () => {
         logInfo('System has resumed from suspend.');
-        if (oldIndexAndDecided[0] !== -9) {
-            await startProfile(oldIndexAndDecided[0], oldIndexAndDecided[1], RESTART.HIBERNATION);
+        const [localIndex, localDecided] = [...oldIndexAndDecided]
+        await clearPartialData();
+        if (localIndex !== -9) {
+            await stopServers().finally(() => afterStopServer());
+            await startProfile(localIndex, localDecided, RESTART.HIBERNATION);
         }
     });
 
-    app.on('activate', () => {
+    app.on('activate', async () => {
+        await clearPartialData();
         if (!mainWindow || mainWindow?.isDestroyed()) {
             createMainWindow();
         }
@@ -283,18 +310,18 @@ app.on('window-all-closed', () => {
 });
 
 const clearSession = async () => {
-    return Promise.all([session.defaultSession.clearData({
-        dataTypes:
-            ['backgroundFetch', 'cache', 'cookies', 'downloads', 'fileSystems', 'indexedDB', 'localStorage', 'serviceWorkers', 'webSQL']
-    }), session.defaultSession.clearCache(), session.defaultSession.clearHostResolverCache(), session.defaultSession.clearAuthCache(),
-        session.defaultSession.clearSharedDictionaryCache(), session.defaultSession.clearCodeCaches({})])
+    await stopServers();
+    afterStopServer();
+    clearCertCache();
+    await Promise.all([temporarySession, session.defaultSession].flatMap(session => [session.clearData(), session.clearCache(), session.clearHostResolverCache(),
+        session.clearAuthCache(), session.clearSharedDictionaryCache(), session.clearCodeCaches({})]))
 }
 
 app.on('will-quit', async (event) => {
     // This is a final chance to stop servers if not already done
     event.preventDefault(); // Prevent immediate quit
     logInfo("Application is about to quit. Stopping servers...");
-    await Promise.all([stopServers(), session.defaultSession.clearCache()]);
+    await stopServers().finally(() => afterStopServer());
     app.exit(); // Now actually exit
 });
 
@@ -316,6 +343,9 @@ ipcMain.on('open-help', () => {
         parent: mainWindow,
         modal: false,
         webPreferences: {
+            devTools: !app.isPackaged,
+            spellcheck: false,
+            partition,
             preload: path.join(__dirname, '../preload/preload.js'), // Re-use preload for simplicity
             contextIsolation: true,
             nodeIntegration: false
@@ -390,6 +420,9 @@ ipcMain.on('open-config-editor', () => {
         parent: mainWindow,
         modal: true,
         webPreferences: {
+            devTools: !app.isPackaged,
+            spellcheck: false,
+            partition,
             preload: path.join(__dirname, '../preload/preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
@@ -572,8 +605,8 @@ function prepareProfile(config, profileIndex, toBeDecided, reusableHackFunctions
 }
 
 async function startProfile(profileIndex, toBeDecided, isRestart) {
-    logInfo(`Attempting to start profile index: ${profileIndex}`);
     oldIndexAndDecided = [-9, {}]
+    logInfo(`Attempting to start profile index: ${profileIndex}`);
     if (profileIndex === -1 || (profileIndex >= 0 && profileIndex < currentConfig[0].profile.length)) {
         let profile;
         try {
@@ -638,6 +671,9 @@ ipcMain.on('edit-proxy-profile', async (event, profileIndex) => {
         parent: mainWindow,
         modal: true,
         webPreferences: {
+            devTools: !app.isPackaged,
+            spellcheck: false,
+            partition,
             preload: path.join(__dirname, '../preload/preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
@@ -880,7 +916,7 @@ ipcMain.handle('open-main-more-options', async () => {
 
         } else if ((response === (systemProxyOn !== null ? 4 : 3))) {
             await clearSession();
-            mainWindow.webContents.send('proxy-status-update', {message: 'Cache cleared successfully!'})
+            mainWindow.webContents.send('proxy-status-update', {message: 'Cache cleared successfully! Please restart server.'})
         }
         return response;
     } catch (error) {
@@ -896,3 +932,20 @@ ipcMain.on('open-external-link', (event, url) => {
 process.on('uncaughtException', (err) => {
     logError('uncaughtException occurred:', err);
 });
+
+process.on('unhandledRejection', (reason) => {
+    logError('Unhandled rejection:', reason);
+});
+
+app.on('render-process-gone', (event, webContents, details) => {
+    logError('Render process gone:', details);
+    if (details.reason === 'crashed') {
+        webContents.reload();
+    }
+});
+
+app.on('child-process-gone', (event, details) => {
+    logError('Child process gone:', details);
+})
+
+process.on('warning', e => console.warn(e.stack));

@@ -22,9 +22,9 @@ p {
 }
 
 .container {
-    max-width: 700px;
+    max-width: 650px;
     margin: 0 auto;
-    height: 73vh;
+    height: 73.6vh;
 }
 
 .header {
@@ -36,21 +36,23 @@ p {
     padding-right: 5px;
     padding-bottom: 2px;
     border-bottom: 1px solid #ddd;
-    height: 80px;
+    height: 75px;
 }
 
 .title {
     font-family: 'Georgia', serif; /* Example of a special font */
-    font-size: 2.5em;
+    font-size: 2.4em;
     color: #2c3e50;
     margin: 0;
+    white-space: nowrap;
+    max-width: 200px;
 }
 
 .status-info {
     text-align: right;
     font-size: 0.95em;
     color: #555;
-    max-width: 360px;
+    max-width: 350px;
 }
 
 .status-info p {
@@ -148,14 +150,24 @@ button:disabled {
 }
 
 .profiles-area {
+    scroll-snap-type: y mandatory;
     flex-grow: 1; /* Takes remaining vertical space */
     height: 99.5%;
     overflow-y: scroll;
-    border: 1px solid #d1d5da; /* GitHub-like border */
+    scrollbar-width: thin;
+    border: 1px solid #d1d5da;
     border-radius: 6px;
     background-color: #ffffff;
     padding: 2px 0; /* Remove padding, item will have it */
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.profiles-area-inner {
+    scroll-snap-align: start;
+    &.bouncy {
+        margin-top: 10px;
+        margin-bottom: 10px;
+    }
 }
 
 .profile-item {
@@ -165,15 +177,49 @@ button:disabled {
     padding: 4px 10px;
     height: 32px;
     border-bottom: 1px solid #eee;
-    transition: background-color 0.4s;
+    position: relative;
+    --line-color: white;
+    overflow: hidden;
+
+    &::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(to right, #ffffff 0%, #ffebda 50%, #ffebda 100%);
+        opacity: 0;
+        transition: opacity .4s ease-in-out;
+        will-change: opacity;
+        pointer-events: none;
+        z-index: 0;
+    }
 
     &:nth-child(even) {
         background-color: #f7f7f7;
     }
 
-    &:hover {
-        background-color: #ffebda;
+    &:hover::before {
+        opacity: 1;
     }
+}
+
+.profile-item > * {
+    position: relative;
+    z-index: 1;
+}
+
+.profile-item.on::before {
+    display: none;
+}
+
+.profile-item.on {
+    background: linear-gradient(to right, var(--line-color) 0%, white 100%);
+    background-repeat: no-repeat;
+    background-size: 0 100%;
+    animation: profileLineFill .4s ease-out forwards;
+}
+
+@keyframes profileLineFill {
+    to { background-size: 100% 100%; }
 }
 
 .profile-item:last-child {
@@ -188,6 +234,7 @@ button:disabled {
     overflow: scroll;
     scrollbar-width: none;
     white-space: nowrap;
+    font-weight: 420;
 }
 
 .profile-edit-icon {
@@ -200,6 +247,26 @@ button:disabled {
     height: 14px;
     display: inline-block;
 
+}
+
+.profile-anchor-icon {
+    width: 15px;
+    height: 15px;
+    display: inline-block;
+    margin-right: 5px;
+    margin-top: 2px;
+
+    --icon-color: grey;
+    background-color: var(--icon-color);
+    &.anchor {
+        mask-image: url('../static/anchor.svg');
+    }
+    &.anchors {
+        mask-image: url('../static/anchors.svg');
+    }
+    mask-size: contain;
+    mask-repeat: no-repeat;
+    mask-position: center;
 }
 
 .profile-edit-icon:hover {
@@ -235,7 +302,7 @@ button:disabled {
     margin-left: 4px;
     align-items: baseline;
     font-size: 0.85em;
-    color: #777;
+    color: #5a5a5a;
     max-width: 100%;
 }
 
@@ -379,7 +446,7 @@ button:disabled {
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.3);
     z-index: 100;
     opacity: 0;
     visibility: hidden;

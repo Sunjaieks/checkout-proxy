@@ -2,6 +2,12 @@ export const gethostUsingProxy = (profile) => profile?.proxy?.hostUsingProxy || 
 export const gethostBypassProxy = (profile) => profile?.proxy?.hostBypassProxy || [];
 export const gethttpFixedRule = (profile) => profile?.proxy?.httpFixedRule || Object.create(null);
 export const gethttpsFixedRule = (profile) => profile?.proxy?.httpsFixedRule || Object.create(null);
+export const isRelativePath = (u) => typeof u === 'string' && u.startsWith('/');
+export const isHttp = (url) => {
+    const rawUrl = url?.toLowerCase() || '';
+    return rawUrl.startsWith('http://') || rawUrl.startsWith('https://')
+}
+
 export const getUrlFactor = (url) => {
     try {
         if(!url) return null;
@@ -10,7 +16,8 @@ export const getUrlFactor = (url) => {
         return {
             protocol: urlObj.protocol.slice(0, -1),
             host: urlObj.hostname,
-            port: urlObj.port || (urlObj.protocol === 'https:' ? '443' : '80')
+            port: urlObj.port || (urlObj.protocol === 'https:' ? '443' : '80'),
+            urlObj
         };
     } catch (e) {
         return null;
