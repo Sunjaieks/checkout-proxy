@@ -86,7 +86,7 @@ export async function restoreFromCompressedObject(compressedObject) {
     const sampleComment1 = `/**
  * This is a sample function of how to change a request right before sending to target
  * @param {anyArgs} you can pass any args as a closure for initializing your function
- * @returns {requestOptions} it is mandatory to return an object of modified request options 
+ * @returns {function(requestOptions): modifiedRequestOptions} it is mandatory for nested function to return an object of modified request options 
  */`;
     const sampleExpression1 = `const __hackRequestSample = (...anyArgs) => (requestOptions) => {
   /**
@@ -106,7 +106,7 @@ export async function restoreFromCompressedObject(compressedObject) {
     const sampleComment2 = `/**
  * This is a sample function of how to change a response right before sending back to browser
  * @param {anyArgs} you can pass any args as a closure for initializing your function as closure
- * @returns {originalResponse} it is mandatory to return an object of modified response options 
+ * @returns {function(requestOptions, originalResponse): modifiedResponse} it is mandatory for nested function to return an object of modified response 
  */`;
     const sampleExpression2 = `const __hackResponseSample = (...anyArgs) => (requestOptions, originalResponse) => {
   /**

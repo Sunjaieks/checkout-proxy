@@ -9,3 +9,9 @@ export const CONFIG_OUTDATED_MESSAGE = 'Configuration is outdated. This might ca
 export const ASK_TO_RENEW_CA = `Please retry [More]->[${GENERATE_CERT_BUTTON_NAME}].`
 export const ASK_TO_RENEW_CA_LONG = `Please retry [More]->[${GENERATE_CERT_BUTTON_NAME}], otherwise browser may block the response.`
 export const IGNORED_ERROR_CODE = {'ERR_STREAM_PREMATURE_CLOSE': true, 'ECONNRESET': true};
+export const REPO_LINK = 'https://XXXXX/repos/checkout-proxy';
+export const DOWNLOAD_LINK = `${REPO_LINK}/browse/dist/latest`;
+export const LATEST_JSON_URL = `${REPO_LINK}/raw/dist/latest.json`;
+//this token will expire on 2026-12
+export const BITBUCKET_TOKEN = 'YYYYY';
+

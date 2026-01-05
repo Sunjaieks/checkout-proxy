@@ -26,12 +26,12 @@
     </div>
 
     <div class="buttons-panel">
-        <button id="btnMainMoreOptions">More</button>
-        <button id="btnEditConfig">Edit Config</button>
-        <button id="btnImportConfig">Import Config</button>
-        <button id="btnExportConfig">Export Config</button>
-        <button id="btnDirectConnect">Direct Connect</button>
-        <button id="btnStopProxy">Stop</button>
+        <button id="btnMainMoreOptions" class="button-common">More</button>
+        <button id="btnEditConfig" class="button-common">Edit Config</button>
+        <button id="btnImportConfig" class="button-common">Import Config</button>
+        <button id="btnExportConfig" class="button-common">Export Config</button>
+        <button id="btnDirectConnect" class="button-common">Direct Connect</button>
+        <button id="btnStopProxy" class="button-common">Stop</button>
     </div>
 
     <p id="statusMessage"></p>
@@ -48,6 +48,33 @@
         </div>
         <div class="popover-actions">
             <div id="placeholder-ok-btn" tabindex="0">OK</div>
+        </div>
+    </div>
+</div>
+<div class="overlay" id="update-overlay">
+    <div class="update-notification" id="update-notification">
+        <div class="update-header">
+            <div class="update-icon">🎉</div>
+            <h2 class="update-title">New Update Available!</h2>
+        </div>
+        <div class="update-content">
+            <p class="update-message">
+                Version <strong id="update-version">0.0.0</strong> is now available.
+            </p>
+            <p class="update-current">
+                You're currently on version <span id="current-version">0.0.0</span>
+            </p>
+        </div>
+        <div class="update-actions">
+            <button class="update-btn update-btn-primary" id="update-download-btn">
+                <span>🚀</span> Check New Features & Download
+            </button>
+            <button class="update-btn update-btn-secondary" id="update-skip-btn">
+                Skip This Version
+            </button>
+            <button class="update-btn update-btn-tertiary" id="update-snooze-btn">
+                Snooze for 21 Days
+            </button>
         </div>
     </div>
 </div>
