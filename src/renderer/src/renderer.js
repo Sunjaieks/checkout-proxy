@@ -4,7 +4,8 @@ const activeProfileNameEl = document.getElementById('activeProfileName');
 const activePlaceholderEl = document.getElementById('activePlaceholder');
 const activeProfileIndicatorEl = document.getElementById('activeProfileIndicator');
 const statusMessageEl = document.getElementById('statusMessage');
-const profilesListEl = document.getElementById('profilesList');
+const profilesAreaEl = document.getElementById('profilesArea');
+const profilesAreaInnerEl = profilesAreaEl.firstElementChild;
 const appVersionDisplayEl = document.getElementById('app-version-display');
 
 const placeholderOverlayEl = document.getElementById('placeholder-overlay');
@@ -13,6 +14,8 @@ const placeholderInputsEl = document.getElementById('placeholder-inputs');
 const placeholderOkBtn = document.getElementById('placeholder-ok-btn');
 const directConnectBtn = document.getElementById('btnDirectConnect');
 
+const STANDARD_SATURATION = 70;
+const STANDARD_LIGHTNESS = 45;
 let placeHolderOptionsMap = {};
 let currentConfigData = null;
 let currentActiveProfileIndex = -9;
@@ -54,15 +57,25 @@ async function loadAppVersion() {
 
 function renderProfilesStatus(activeProfileIndex, placeholders) {
     directConnectBtn?.classList[activeProfileIndex === -1 ? 'add' : 'remove']('on');
-    const allLeftContainer = profilesListEl.querySelectorAll('.profile-left-container');
+    const allLeftContainer = profilesAreaInnerEl.querySelectorAll('.profile-left-container');
     allLeftContainer?.forEach((node, index) => {
+        const line = node.parentNode;
         const indicator = node.nextSibling.querySelector('.profile-indicator-container .indicator');
         const placeholderContainer = node.querySelector('.profile-left-bottom-container')
+        const anchorContainer = node.querySelector('.profile-anchor-icon')
+        const profileNameContainer = anchorContainer.nextElementSibling;
+        const colorArray = anchorContainer.dataset.anchorcolor.split(',').map(v => parseInt(v, 10));
+        const lineColorArray = [...colorArray];
+        profileNameContainer.classList.remove('bold');
         indicator.classList.remove('on');
+        line.classList.remove("on")
         indicator.classList.remove('error');
         if (placeholderContainer) placeholderContainer.outerHTML = '';
         if (indicator.dataset.profile === `${activeProfileIndex}`) {
+            lineColorArray[2] += 42;
+            profileNameContainer.classList.add('bold');
             indicator.classList.add('on');
+            line.classList.add("on")
             if (Object.keys(placeholders || {}).length > 0) {
                 const leftBottomContainer = document.createElement('div');
                 leftBottomContainer.className = 'profile-left-bottom-container';
@@ -70,6 +83,8 @@ function renderProfilesStatus(activeProfileIndex, placeholders) {
                 node.append(leftBottomContainer)
             }
         }
+        anchorContainer.style.setProperty('--icon-color', toColorString(colorArray));
+        line.style.setProperty('--line-color', toColorString(lineColorArray));
     });
 }
 
@@ -122,20 +137,49 @@ function updateStatusDisplay(status) {
     statusMessageEl.style.visibility = true;
 }
 
+function hashStringSegment(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return hash;
+}
+
+function stringToColorArray(str) {
+    const segments = str.split(/[\s,|.;:/_-]+/);
+    let finalHash = 0;
+
+    const weights = [1.0, 0.5, 0.3, 0.1, 0.05];
+    const FALLBACK_WEIGHT = 0.01;
+
+    segments.forEach((segment, index) => {
+        const segmentHash = hashStringSegment(segment);
+        const weight = weights[index] !== undefined ? weights[index] : FALLBACK_WEIGHT;
+        finalHash += segmentHash * weight;
+    });
+
+    const hue = Math.abs(Math.round(finalHash) % 360);
+    return [hue, STANDARD_SATURATION, STANDARD_LIGHTNESS]
+}
+
+function toColorString(obj) {
+    return `hsl(${obj[0]}, ${obj[1]}%, ${obj[2]}%)`;
+}
 
 function renderProfiles() {
+    profilesAreaInnerEl.classList.remove('bouncy');
     if (!currentConfigData || !currentConfigData.profile) {
-        profilesListEl.innerHTML = '<p>No profiles configured.</p>';
+        profilesAreaInnerEl.innerHTML = '<p>No profiles configured.</p>';
         return;
     }
 
-    profilesListEl.innerHTML = ''; // Clear existing
+    profilesAreaInnerEl.innerHTML = ''; // Clear existing
     if (currentConfigData.profile.length === 0) {
-        profilesListEl.innerHTML = '<p>No profiles configured. Click "Edit Config" to add some.</p>';
+        profilesAreaInnerEl.innerHTML = '<p>No profiles configured. Click "Edit Config" to add some.</p>';
         return;
     }
 
-    currentConfigData.profile.forEach((profile, index) => {
+    currentConfigData.profile.forEach((profile, index, array) => {
         const item = document.createElement('div');
         item.className = 'profile-item';
 
@@ -143,9 +187,18 @@ function renderProfiles() {
         profileLeftContainer.className = 'profile-left-container';
         const profileLeftTopContainer = document.createElement('div');
         profileLeftTopContainer.className = 'profile-left-top-container';
+
         const nameEl = document.createElement('span');
         nameEl.className = 'profile-name';
-        nameEl.textContent = profile.name || `Profile ${index + 1}`;
+        nameEl.textContent = profile.name || `Profile ${index}`;
+
+
+        const anchorEl = document.createElement('span');
+        anchorEl.className = 'profile-anchor-icon';
+        anchorEl.classList.add(profile.toBeDecided?.length > 0 ? 'anchors' : 'anchor');
+        const colorObj = stringToColorArray(nameEl.textContent);
+        anchorEl.style.setProperty('--icon-color', toColorString(colorObj));
+        anchorEl.dataset.anchorcolor = colorObj.join(',');
 
         const editEl = document.createElement('span');
         editEl.className = 'profile-edit-icon';
@@ -153,7 +206,7 @@ function renderProfiles() {
             event.preventDefault();
             window.electronAPI.editProxyProfile(index);
         }));
-        profileLeftTopContainer.append(nameEl, editEl);
+        profileLeftTopContainer.append(anchorEl, nameEl, editEl);
         profileLeftContainer.append(profileLeftTopContainer)
 
         const rightContainer = document.createElement('div');
@@ -196,8 +249,11 @@ function renderProfiles() {
 
         item.appendChild(profileLeftContainer);
         item.appendChild(rightContainer);
-        profilesListEl.appendChild(item);
+        profilesAreaInnerEl.appendChild(item);
     });
+    if (profilesAreaInnerEl.scrollHeight > profilesAreaEl.clientHeight) {
+        profilesAreaInnerEl.classList.add('bouncy');
+    }
 }
 
 function repositionAndShowOptions(placeholderName, optionsContainer, alwaysShow = false) {

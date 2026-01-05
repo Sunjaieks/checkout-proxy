@@ -2,13 +2,17 @@ export class LRUCache {
     capacity = 10;
     ttl = 0;
     cache = new Map();
+    cleanup = null;
 
-    constructor(capacity, ttl) {
+    constructor(capacity, ttl, cleanup) {
         if (Number.isInteger(capacity) && capacity > 0) {
             this.capacity = capacity;
         }
         if (Number.isInteger(ttl) && ttl > 0) {
             this.ttl = ttl;
+        }
+        if (typeof cleanup === 'function') {
+            this.cleanup = cleanup;
         }
     }
 
@@ -16,7 +20,8 @@ export class LRUCache {
         const value = this.cache.get(key);
         if (value) {
             if (this.ttl > 0 && (new Date() - value[1]) > this.ttl) {
-                this.cache.delete(key);
+                this.cache.delete(key)
+                this.cleanup?.(value[0]);
                 return null;
             }
             this.cache.delete(key);
@@ -37,7 +42,8 @@ export class LRUCache {
         return value;
     }
 
-    clear(){
+    clear() {
+        if (this.cleanup) this.cache.forEach((v, k) => this.cleanup(v[0]));
         this.cache.clear();
     }
 }

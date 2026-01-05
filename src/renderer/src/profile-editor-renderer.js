@@ -5,7 +5,7 @@ import "ace-builds/src-min-noconflict/mode-json";
 import "ace-builds/src-min-noconflict/theme-xcode";
 import jsonWorker from "ace-builds/src-min-noconflict/worker-json?url";
 import {config} from "ace-builds";
-import {CONFIG_OUTDATED_MESSAGE, PROFILE_EDITOR_WINDOW_NAME} from "../../constant/constant";
+import {CONFIG_OUTDATED_MESSAGE, PROFILE_EDITOR_WINDOW_NAME} from "../../constant/constant.js";
 
 config.setModuleUrl("ace/mode/json_worker", jsonWorker)
 

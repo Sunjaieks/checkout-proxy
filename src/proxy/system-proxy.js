@@ -1,4 +1,4 @@
-import {createOsFunction, executeCommand, logError} from "../util/nodeUtil";
+import {createOsFunction, executeCommand, logError} from "../util/nodeUtil.js";
 
 const getWindowsProxyStatus = async () => {
     const regPath = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings';

@@ -1,6 +1,6 @@
 {
   "name": "checkout-proxy",
-  "version": "1.4.6",
+  "version": "1.4.8",
   "description": "HTTPS Proxy with dynamic certificate generation and host mapping",
   "main": "./out/main/main.js",
   "scripts": {
@@ -23,13 +23,14 @@
   },
   "devDependencies": {
     "electron": "37.1.0",
-    "electron-builder": "^24.9.1",
+    "electron-builder": "^26.0.12",
     "electron-vite": "^3.1.0",
     "vite": "^6.3.5"
   },
   "build": {
     "appId": "sunjaieks.checkoutproxy",
     "productName": "CheckoutProxy",
+    "executableName": "CheckoutProxy",
     "artifactName": "${productName}-${version}-${arch}.${ext}",
     "files": [
       "out/**/*"
@@ -69,7 +70,25 @@
     },
     "mac": {
       "extendInfo": {
-        "NSLocalNetworkUsageDescription": "This permission is required to route your DNS queries privately to remote servers."
+        "NSLocalNetworkUsageDescription": "This permission is required to route your DNS queries privately to remote servers.",
+        "com.apple.developer.networking.multicast": true,
+        "com.apple.security.network.client": true,
+        "com.apple.security.network.server": true,
+        "com.apple.security.cs.allow-jit": true,
+        "com.apple.security.cs.allow-unsigned-executable-memory": true,
+        "com.apple.developer.networking.networkextension": [
+          "app-proxy-provider",
+          "dns-proxy",
+          "content-filter-provider",
+          "packet-tunnel-provider",
+          "dns-proxy-systemextension",
+          "app-proxy-provider-systemextension",
+          "content-filter-provider-systemextension",
+          "packet-tunnel-provider-systemextension",
+          "dns-settings",
+          "app-push-provider",
+          "relay"
+        ]
       },
       "target": [
         {

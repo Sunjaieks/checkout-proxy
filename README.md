@@ -55,10 +55,11 @@ Here are some of its key features:
 1.  **Operation Manual:**
     *   **Top Buttons:**
         *   **More:** Open a menu.
-            *   **Open help window** Open this help document.
-            *   **Create and Trust CA certificate** Abolish current Root CA certificate and generate a new one. Then ask OS to trust the new one.
-            *   **Download CA certificate** Download current Root CA certificate if exist. Command for adding certificate by command line will also be copied.
-            *   **Toggle system proxy ON(OFF)** Turn on/off system proxy setting for you(if you click turn on, it will set Checkout-Proxy's host and port for you). It's useful when you want to use proxy for some applications in your system. Especially for Safari browser which doesn't support proxy extension.
+            *   **Open Help Window** Open this help document.
+            *   **Create and Trust CA Certificate** Abolish current Root CA certificate and generate a new one. Then ask OS to trust the new one.
+            *   **Download CA Certificate** Download current Root CA certificate if exist. Command for adding certificate by command line will also be copied.
+            *   **Toggle System Proxy ON(OFF)** Turn on/off system proxy setting for you(if you click turn on, it will set Checkout-Proxy's host and port for you). It's useful when you want to use proxy for some applications in your system. Especially for Safari browser which doesn't support proxy extension.
+            *   **Clear App Cache** Clear Code Cache, Http Cache, Dictionary Cache and so on.
         *   **Edit Config:** Opens a JSON editor to modify the proxy rules and profiles. Click `Save and Close` to apply.
         *   **Import Config:** Loads a configuration JSON file from your system.
         *   **Export Config:** Saves the current configuration to a file.
@@ -78,82 +79,82 @@ The configuration is a JSON object with a `profile` array:
 
 ```json
 {
-  "configVersion": 1,
   // Version of the configuration file, this filed is used for informing you in case newer configuration format is released. you should not change this value.
+  "configVersion": 1,
   "appPort": [ // you must specify two ports for this APP
     8001, // the first Port reserved for this APP, default is 8001, you should always use this port to access Checkout Proxy,
     8002 // the second Port reserved for this APP, default is 8002, you should never access this port directly
   ],
+  // in case a profile having this field, APP will ask you to decide the value by showing a popup when you start this profile
   "toBeDecided": [
-    // in case a profile having this field, APP will ask you to decide the value by showing a popup when you start this profile
-    "proxyPort=8800,8801"
+    "proxyPort=5801,5802"
   ],
+  // unlike "toBeDecided", any placeholder holding the key of this field will be replaced by its value automatically when you start this profile
   "substitute": {
-    // unlike "toBeDecided", any placeholder holding the key of this field will be replaced by its value automatically when you start this profile
-    "globalStgToolPort": "8803"
+    "globalStgToolPort": "5702"
   },
   "profile": [
     {
-      "name": "9403-default",
       // give a name to the profile
+      "name": "5702-default",
       "proxy": {
-        "proxyUrl": "http://any.proxy.domain:8888", // specify the protocol,host,port for remote proxy. Only http is supported for now.
+        "proxyUrl": "http://stg.proxy.com:5702", // specify the protocol,host,port for remote proxy. Only http is supported for now.
         "globalProfile": [
           // specify the name of global profile you want to use in this profile, you can use multiple global profiles. The rules in globalProfile will be merged into this profile when you start this profile. Please refer to the `Global Profile` section for more details
           "prodTool",
           "others"
         ],
-        // specify the port of remote proxy
         "hostUsingProxy": [
           // specify the substring of the domain that you want to use remote proxy, priority : httpsFixedRule = httpFixedRule > hostBypassProxy > hostUsingProxy
-          "*.any.any.com",
-          "*.any.com"
+          "*.aa.bb.com",
+          "*.cc.dd.com",
+          "*.resource.com"
         ],
         "hostBypassProxy": [
-          "*.any.aa.com"
+          // specify the substring of the domain which you don't want to use remote proxy, this has higher priority than `hostUsingProxy`
+          "*.ee.ff.com"
         ],
-        // specify the substring of the domain which you don't want to use remote proxy, this has higher priority than `hostUsingProxy`
+        // this section is used for proxying HTTPS request to https/http target. All the rules in this section will not use remote proxy specified by proxy.proxyUrl, if you want to use secondary proxy server, you need to specify `customizedProxy` field for each rule
         "httpsFixedRule": {
-          // this section is used for proxying HTTPS request to https/http target. All the rules in this section will not use remote proxy specified by proxy.proxyUrl, if you want to use secondary proxy server, you need to specify `customizedProxy` field for each rule
-          "aaa.bbb.ccc.com:443": {
-            // specify the domain and port(can not omit) that you want to use fixed rule
-            "target": "https://target.domain.com:443",
+          // specify the domain and port(can not omit) that you want to use fixed rule
+          "map.specified.domain.com.for.https:443": {
             // specify the target protocol, domain and port. Only http is supported for now.
-            "customizedProxy": "http://proxy.domain.com:8800",
+            "target": "https://mapped.specified.domain.com:443",
             // specify the secondary proxy server, if you don't want to use secondary proxy server, you can omit this field
-            "keepHostHeader": true,
+            "customizedProxy": "http://specified.proxy.domain.com:5703",
             // if you want to keep the original host header, you can set this field to true, default is false, in most of the case you don't need to set this field
-            "bypassCors": true,
+            "keepHostHeader": true,
             // if you want to bypass CORS restriction, you can set this field to true, default is false, it's experimental feature, you can use this feature only if you know what you are doing
+            "bypassCors": true,
             "hackRequest": [
               // this field is used for modifying request  before sending request to target server, you can use multiple hacks, they will be executed in order. Please refer to the section of `Hack Function` for more details
-              "overwriteCookiesInRequestHeaders(['aa=bbbb'])"
+              "overwriteCookiesInRequestHeaders(['Cc=ffff'])"
             ],
             "hackResponse": [
               // this field is used for modifying response before sending response to browser, you can use multiple hacks, they will be executed in order. Please refer to the section of `Hack Function` for more details
-              "overwriteCookiesInResponseHeaders(['aa=bbbb'])"
+              "overwriteCookiesInResponseHeaders(['Dd=ffff'])"
             ]
           }
         },
+        // this section is used for proxying HTTP request to https/http target. All the rules in this section will not use remote proxy specified by proxy.proxyUrl, if you want to use secondary proxy server, you need to specify `customizedProxy` field for each rule
         "httpFixedRule": {
-          // this section is used for proxying HTTP request to https/http target. All the rules in this section will not use remote proxy specified by proxy.proxyUrl, if you want to use secondary proxy server, you need to specify `customizedProxy` field for each rule
-          "any.host.local:8080": {
-            // specify the domain and port(can not omit) that you want to use fixed rule
-            "target": "http://target.domain.com:9001",
+          // specify the domain and port(can not omit) that you want to use fixed rule
+          "map.specified.domain.com.for.http:8000": {
             // same as the field in httpsFixedRule
-            "customizedProxy": "http://proxy.domain.com:9002",
+            "target": "http://mapped.specified.domain.com.for.http:8000",
+            // same as the field in httpsFixedRule
+            "customizedProxy": "http://specified.proxy.domain.com:5704",
             // same as the field in httpsFixedRule
             "keepHostHeader": true,
             // same as the field in httpsFixedRule
             "bypassCors": true,
-            // same as the field in httpsFixedRule
             "hackRequest": [
               // same as the field in httpsFixedRule
-              "overwriteCookiesInRequestHeaders(['aa=bbbbb'])"
+              "overwriteCookiesInRequestHeaders(['Cc=ffff'])"
             ],
             "hackResponse": [
               // same as the field in httpsFixedRule
-              "overwriteCookiesInResponseHeaders(['aa=bbbb'])"
+              "overwriteCookiesInResponseHeaders(['Dd=ffff'])"
             ]
           }
         }
@@ -167,25 +168,24 @@ The configuration is a JSON object with a `profile` array:
     }
   ],
   "globalSettings": {
-    "substitute": {
-      // same as the field in individual profile, but this field will be applied to all the individual profiles
-      "globalStgProxyHost": "global.stg.proxy-domain.com"
+    "substitute": { // same as the field in individual profile, but this field will be applied to all the individual profiles
+      "globalStgProxyHost": "http://specified.global.proxy.domain.com:80"
     },
+    // this section is used for defining some global profiles that can be used in any profile by specifying the name of the global profile in `proxy` field
     "profileSet": {
-      // this section is used for defining some global profiles that can be used in any profile by specifying the name of the global profile in `proxy` field
       "stgTool": { // name of the global profile
         "httpsFixedRule": { // same as the field in profile.proxy.httpsFixedRule
-          "any.global.domain.com": {
-            "customizedProxy": "http://stg.proxy.domain.com:{{globalStgToolPort}}"
+          "map.specified.domain.com.for.https": {
+            "customizedProxy": "http://specified.proxy.domain.com:5704"
           }
         },
         "httpFixedRule": {} // same as the field in profile.proxy.httpFixedRule
       }
     }
   },
+  // this section is used for defining how and which hack functions you want to use.
+  // Please refer section of `Hack Function` for more details
   "reusableHackFunctions": {
-    // this section is used for defining how and which hack functions you want to use.
-    // Please refer section of `Hack Function` for more details
     "overwriteCookiesInResponseHeaders": [
       // first element is reserved for saving comment of the function
       "",
@@ -231,9 +231,8 @@ You can use wildcard `*` at the beginning or the end of the key in `http(s)Fixed
 1.  **How does the key of http(s)FixedRule decided by Default port, Wildcard and Placeholder :**
     *   when you start a profile, the placeholder in the key of http(s)FixedRule will be replaced by defined `globalSettings.substitute`, `substitute`, `toBeDecided` firstly, then the key will be formatted base on following rules:
         *   if the key of rule is like `domain:port`, the formatted key will be `domain:port`
-        *   if the key of rule is like `domain`(without port), the formatted will be `domain:80` (80 for httpFixedRule, 443 for httpsFixedRule)
-        *   if the key of rule is like `*domain*`, the formatted key will be `*domain*:80` (80 for httpFixedRule, 443 for httpsFixedRule)
-        *   if the key of rule is like `domain*:port`, the formatted will be `domain*:port`
+        *   if the key of rule is like `domain`(without port), the formatted key will be `domain:80` (80 for httpFixedRule, 443 for httpsFixedRule)
+        *   if the key of rule is like `*domain*`(without port), the formatted key will be `*domain*:80` (80 for httpFixedRule, 443 for httpsFixedRule)
     *   then for same formatted key in individual profile and global profile, the value of http(s)FixedRule will be merged, please refer to the example below:
 
 2.  **Example of Merging global profile into a individual profile:**
@@ -435,7 +434,15 @@ You can use wildcard `*` at the beginning or the end of the key in `http(s)Fixed
     * you need to set "127.0.0.1" but NOT "localhost" for Checkout-Proxy from your browser's plugin(FoxyProxy or SwitchyOmega).
 2.  **On macOS, Checkout-Proxy response following error message:`{"code":"ENOTFOUND","message":"getaddrinfo ENOTFOUND...}`.**
     * you need to give Local Network permission to Checkout-Proxy by [System Settings] -> [Privacy&Security] -> [Local Network] -> [find Checkout-Proxy and turn on the switch]. Especially for the host ending with `.local`.
-3.  **Can I use https proxy?**
+3.  **I want to test Safari/IOS Simulator, but Checkout-Proxy could not work properly with VPN while OS proxy is on.**
+    *  You need to follow following steps (Especially, the order of step MUST NOT be messed up):
+        * [toggle OS proxy on by feature of "Toggle System Proxy ON/OFF" or do it manually by OS setting] **profile is not started at this moment
+        * [connect VPN]
+        * [start the profile you want to use]
+4.  **Checkout-Proxy rarely crashes right after reconnecting the VPN while this APP is set as OS level proxy. Especially for ARM series Mac**
+    *  it's due to https://github.com/nodejs/node/issues/54717#issuecomment-2327982075. Some countermeasures has been included, but if it still happen, You can just restart the APP for now, or any of following workarounds should help:
+        *  when OS proxy is on, before (re)connecting to VPN, always turn off the profile of Checkout-Proxy.
+        *  turn of ipv6 by [Go to your OS Wi-Fi settings]->[Details...]->[TCP/IP]->[Configure IPv6]->[Link-local only] or by command line: `networksetup -setv6off Wi-Fi`(you can turn it on again by `networksetup -setv6automatic Wi-Fi`)
+5.  **Can I use https proxy?**
     * Not supported yet, which means you can not use `https` in the fields of `profile[n].proxy.proxyUrl` and `http(s)FixedRule.customizedProxy`.
-4.  **Property `profile[n].proxy.proxyUrl`, `http(s)FixedRule[key].target`, `http(s)FixedRule[key].customizedProxy` doesn't work.**
-    * Please verify your url by running `new URL('yourUrl')` in any javascript console, make sure it won't throw exception. Otherwise, property value will be treated as undefined.
+
