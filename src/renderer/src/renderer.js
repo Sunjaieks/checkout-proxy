@@ -553,6 +553,60 @@ window.electronAPI.onProxyStatusUpdate((status) => {
     updateStatusDisplay(status);
 });
 
+// Update notification handling
+const updateOverlayEl = document.getElementById('update-overlay');
+const updateVersionEl = document.getElementById('update-version');
+const currentVersionEl = document.getElementById('current-version');
+const updateDownloadBtn = document.getElementById('update-download-btn');
+const updateSkipBtn = document.getElementById('update-skip-btn');
+const updateSnoozeBtn = document.getElementById('update-snooze-btn');
+
+let currentUpdateInfo = null;
+
+function showUpdateNotification(updateInfo) {
+    currentUpdateInfo = updateInfo;
+    updateVersionEl.textContent = updateInfo.version;
+    currentVersionEl.textContent = updateInfo.currentVersion;
+
+    updateOverlayEl.classList.add('active');
+}
+
+function hideUpdateNotification() {
+    updateOverlayEl.classList.remove('active');
+    currentUpdateInfo = null;
+}
+
+updateDownloadBtn.addEventListener('click', () => {
+    if (currentUpdateInfo) {
+        window.electronAPI.openDownloadPage(currentUpdateInfo.downloadPageUrl);
+        hideUpdateNotification();
+    }
+});
+
+updateSkipBtn.addEventListener('click', () => {
+    if (currentUpdateInfo) {
+        window.electronAPI.skipUpdateVersion(currentUpdateInfo.version);
+        hideUpdateNotification();
+    }
+});
+
+updateSnoozeBtn.addEventListener('click', () => {
+    window.electronAPI.snoozeUpdate(21);
+    hideUpdateNotification();
+});
+
+// Clicking on overlay conditionally snoozes for 7 days (only if remaining snooze <= 7 days)
+updateOverlayEl.addEventListener('click', (event) => {
+    if (event.target === updateOverlayEl) {
+        window.electronAPI.conditionalSnoozeUpdate(4);
+        hideUpdateNotification();
+    }
+});
+
+window.electronAPI.onUpdateAvailable((updateInfo) => {
+    showUpdateNotification(updateInfo);
+});
+
 function init() {
     loadAppVersion();
 }

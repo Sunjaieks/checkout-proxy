@@ -104,10 +104,6 @@ p {
     background-color: #e74c3c; /* Red: error */
 }
 
-button.on {
-    box-shadow: 5px 5px 5px #2ecc71 /* Green: on */
-}
-
 .buttons-panel {
     margin-left: 5px;
     display: flex;
@@ -115,23 +111,27 @@ button.on {
 }
 
 button {
-    padding: 10px 12px;
     font-size: 0.95em;
-    background-color: #3498db;
+    cursor: pointer;
+    font-weight: 580;
+}
+
+.button-common {
+    padding: 10px 12px;
+    background: linear-gradient(135deg, #489cd1 0%, #3293d7 100%);
     color: white;
     border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-button:hover {
-    background-color: #2980b9;
-}
-
-button:disabled {
-    background-color: #bdc3c7;
-    cursor: not-allowed;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    &.on {
+        box-shadow: 5px 5px 5px #2ecc71; /* Green: on */
+        background: linear-gradient(135deg, #3293d7 0%, #2772a3 100%);
+        transform: scale(1.01);
+    }
+    &:hover {
+        transform: scale(1.01);
+        background: linear-gradient(135deg, #3293d7 0%, #2772a3 100%);
+    }
 }
 
 #statusMessage {
@@ -274,14 +274,21 @@ button:disabled {
 }
 
 .profile-actions button {
-    padding: 5px 15px;
-    height: 30px;
+    padding: 5px 16px;
+    height: 31px;
     margin-left: 10px;
-    background-color: #1abc9c;
+    background: linear-gradient(135deg, #1abc9c 0%, #16a085 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
 }
 
 .profile-actions button:hover {
-    background-color: #16a085;
+    background: linear-gradient(135deg, #16a085 0%, #138f75 100%);
+    transform: scale(1.05);
 }
 
 .profile-left-container {
@@ -485,13 +492,13 @@ button:disabled {
     align-content: center;
     width: 100%;
     height: 30px;
-    background-color: #16a085;
+    background: linear-gradient(135deg, #1abc9c 0%, #16a085 100%);
     border-radius: 0 0 12px 12px;
     color: white;
 }
 
 #placeholder-ok-btn:hover, #placeholder-ok-btn:focus {
-    background-color: #117a66;
+    background: linear-gradient(135deg, #16a085 0%, #138f75 100%);
     cursor: pointer;
 }
 
@@ -553,4 +560,154 @@ button:disabled {
     &.selected {
         background-color: #e1e1e1;
     }
+}
+
+/* Update notification styles */
+.update-notification {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, #3498db 0%, #2e8c7a 100%);
+    border-radius: 12px;
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.28);
+    padding: 0;
+    min-width: 340px;
+    max-width: 420px;
+    z-index: 103;
+    animation: slideIn 0.4s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -60%);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%);
+    }
+}
+
+.update-header {
+    background: rgba(255, 255, 255, 0.14);
+    padding: 18px;
+    border-radius: 12px 12px 0 0;
+    text-align: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.update-icon {
+    font-size: 40px;
+    margin-bottom: 6px;
+    animation: bounce 1s infinite;
+}
+
+@keyframes bounce {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+.update-title {
+    color: #ffffff;
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.update-content {
+    padding: 18px;
+    background: #ffffff;
+}
+
+.update-message {
+    font-size: 15px;
+    color: #333;
+    margin: 0 0 10px 0;
+}
+
+.update-message strong {
+    /* Use app primary blue to highlight version */
+    color: #3498db;
+}
+
+.update-current {
+    font-size: 13px;
+    color: #666;
+    margin: 0;
+}
+
+.update-build-date {
+    font-size: 12px;
+    color: #999;
+    margin: 0;
+}
+
+.update-actions {
+    padding: 0 18px 18px 18px;
+    background: #ffffff;
+    border-radius: 0 0 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.update-btn {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.update-btn-primary {
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+    color: #ffffff;
+    box-shadow: 0 3px 10px rgba(52, 152, 219, 0.30);
+}
+
+.update-btn-primary:hover {
+    background: linear-gradient(135deg, #2f89cf 0%, #256fa3 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 5px 14px rgba(52, 152, 219, 0.38);
+    cursor: pointer;
+}
+
+.update-btn-secondary {
+    background: linear-gradient(135deg, #f4f6f8 0%, #e8edf2 100%);
+    color: #5b6b7f;
+    box-shadow: 0 1px 3px rgba(91, 107, 127, 0.18);
+}
+
+.update-btn-secondary:hover {
+    background: linear-gradient(135deg, #eaf0f5 0%, #dee6ee 100%);
+    cursor: pointer;
+}
+
+.update-btn-tertiary {
+    background: #ffffff;
+    color: #6d7c8f;
+    border: 1px solid #e1e7ee;
+}
+
+.update-btn-tertiary:hover {
+    background: #f9fbfd;
+    color: #4f5e72;
+    cursor: pointer;
+}
+
+#update-overlay.active .update-notification {
+    display: block;
 }

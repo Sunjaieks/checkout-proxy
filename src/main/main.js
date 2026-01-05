@@ -44,6 +44,13 @@ import os from "node:os";
 import {systemProxyManager} from "../proxy/system-proxy.js";
 import {compressToObject, restoreFromCompressedObject} from "../generator/generator.js";
 import * as dns from "node:dns";
+import {
+    checkForUpdates,
+    conditionalSnooze,
+    getDownloadPageUrl,
+    skipVersion,
+    snoozeUpdates
+} from "../updater/updater.js";
 
 app.commandLine.appendSwitch('disable-http2');
 app.commandLine.appendSwitch('disable-http-cache');
@@ -276,6 +283,18 @@ app.whenReady().then(() => {
             mainWindow.webContents.send('proxy-status-update', {error: e.message});
         } finally {
             startServers = getStartServers(mainWindow);
+        }
+
+        // Check for updates
+        try {
+            const updateInfo = await checkForUpdates();
+            if (updateInfo && mainWindow && !mainWindow.isDestroyed()) {
+                // Send update notification to renderer
+                mainWindow.webContents.send('update-available', updateInfo);
+                logInfo('Update notification sent to renderer:', updateInfo);
+            }
+        } catch (error) {
+            logError('Error checking for updates:', error);
         }
     });
 
@@ -833,7 +852,7 @@ ipcMain.handle('open-main-more-options', async () => {
         }
         const options = {
             type: 'question',
-            buttons: ['Open Help Window', GENERATE_CERT_BUTTON_NAME, 'Download CA Certificate', ...(systemProxyOn !== null ? [`Toggle System Proxy ${systemProxyOn ? 'OFF' : 'ON'}`] : []), 'Clear App Cache', 'Cancel'],
+            buttons: ['Open Help Window', GENERATE_CERT_BUTTON_NAME, 'Download CA Certificate', ...(systemProxyOn !== null ? [`Toggle System Proxy ${systemProxyOn ? 'OFF' : 'ON'}`] : []), 'Clear App Cache', 'Check for update', 'Cancel'],
             defaultId: 0,
             title: 'more options',
             message: 'Please choose an option:',
@@ -913,10 +932,45 @@ ipcMain.handle('open-main-more-options', async () => {
             } catch (e) {
                 mainWindow.webContents.send('proxy-status-update', {error: e.message})
             }
-
         } else if ((response === (systemProxyOn !== null ? 4 : 3))) {
             await clearSession();
             mainWindow.webContents.send('proxy-status-update', {message: 'Cache cleared successfully! Please restart server.'})
+        } else if ((response === (systemProxyOn !== null ? 5 : 4))) {
+            // Check for update manually
+            try {
+                const updateInfo = await checkForUpdates(true);
+                if (updateInfo) {
+                    // Has update - send to renderer to show popup
+                    mainWindow.webContents.send('update-available', updateInfo);
+                    logInfo('Manual update check: Update available', updateInfo.version);
+                } else {
+                    // No update - show dialog
+                    await dialog.showMessageBox(focusedWindow, {
+                        type: 'info',
+                        title: 'No Update Available',
+                        message: 'You are using the latest version!',
+                        buttons: ['OK']
+                    });
+                    logInfo('Manual update check: Already up to date');
+                }
+            } catch (error) {
+                // Failed to fetch - show dialog with option to open browser
+                logError('Manual update check failed:', error);
+                const {response: openBrowserResponse} = await dialog.showMessageBox(focusedWindow, {
+                    type: 'warning',
+                    title: 'Update Check Failed',
+                    message: 'Unable to check update with bitbucket server.\nWould you like to check manually?',
+                    buttons: ['Open Download Page', 'Cancel'],
+                    defaultId: 0
+                });
+                if (openBrowserResponse === 0) {
+                    await shell.openExternal(getDownloadPageUrl())
+                        .catch(err => {
+                            logError('Failed to open download page:', err);
+                            mainWindow.webContents.send('proxy-status-update', {error: 'Failed to open download page.'});
+                        });
+                }
+            }
         }
         return response;
     } catch (error) {
@@ -927,6 +981,34 @@ ipcMain.handle('open-main-more-options', async () => {
 
 ipcMain.on('open-external-link', (event, url) => {
     shell.openExternal(url).catch(err => logError('Failed to open external link:', err));
+});
+
+// Update-related IPC handlers
+ipcMain.on('skip-update-version', (event, version) => {
+    try {
+        skipVersion(version);
+        logInfo('User skipped version:', version);
+    } catch (error) {
+        logError('Error skipping version:', error);
+    }
+});
+
+ipcMain.on('snooze-update', (event, days) => {
+    try {
+        snoozeUpdates(days);
+        logInfo('User snoozed updates for', days, 'days');
+    } catch (error) {
+        logError('Error snoozing updates:', error);
+    }
+});
+
+ipcMain.on('conditional-snooze-update', (event, days) => {
+    try {
+        conditionalSnooze(days);
+        logInfo('User conditionally snoozed updates for', days, 'days');
+    } catch (error) {
+        logError('Error conditionally snoozing updates:', error);
+    }
 });
 
 process.on('uncaughtException', (err) => {

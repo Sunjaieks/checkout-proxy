@@ -31,6 +31,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     minifyFunction: (formattedFunctionString) => ipcRenderer.invoke('minify-function', formattedFunctionString),
     formatFunction: (minifiedFunctionString) => ipcRenderer.invoke('format-function', minifiedFunctionString),
+
+    // Update-related
+    onUpdateAvailable: (callback) => ipcRenderer.on('update-available', (_event, updateInfo) => callback(updateInfo)),
+    skipUpdateVersion: (version) => ipcRenderer.send('skip-update-version', version),
+    snoozeUpdate: (days) => ipcRenderer.send('snooze-update', days),
+    conditionalSnoozeUpdate: (days) => ipcRenderer.send('conditional-snooze-update', days),
+    openDownloadPage: (url) => ipcRenderer.send('open-external-link', url),
 });
 
 contextBridge.exposeInMainWorld(
