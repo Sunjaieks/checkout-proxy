@@ -79,10 +79,7 @@ This is an Electron-based HTTPS proxy application with dynamic certificate gener
 ## Important Notes
 
 - The application requires trusted root CA installation for HTTPS interception
-- Uses one local port: for HTTP proxy (default 18881), another port for HTTPS MITM is eliminated by inline TLS termination
+- Uses two local ports: first for HTTP proxy (default 18881), second for HTTPS MITM (default 18882)
 - Profiles define different upstream proxy configurations for different development scenarios
 - Configuration changes require stopping and restarting the proxy servers
 - Legacy proxy implementation exists in `legacy/` directory but is not actively used
-
-## Merge Port
-Eliminate httpsServer's dedicated listen port by doing inline TLS termination in the HTTP CONNECT handler — wrap cliSoc directly with tls.TLSSocket and emit secureConnection on httpsServer.

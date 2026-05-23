@@ -627,7 +627,7 @@ const setupResponseCollection = (proxyRes, logId, shouldLog) => {
 
 export const getStartServers = (errorStateCallback, serverErrorCallback) => {
     const { generateServerCertificate } = getGenerateServerCertificate();
-    const getSecureContext = getSNICallback(generateServerCertificate);
+    const sNICallback = getSNICallback(generateServerCertificate);
     errorStateHandler = errorStateCallback;
     serverErrorHandler = serverErrorCallback;
     const usingFallbackCert = !rootCAKeyString || !rootCAString;
@@ -636,78 +636,42 @@ export const getStartServers = (errorStateCallback, serverErrorCallback) => {
     return (listenOn, appPort, currentProfile) =>
         new Promise((resolve) => {
             clearAgentCache();
+            let startedServers = 0;
             const httpPort = appPort[0];
+            const httpsPort = appPort[1];
             const profile = currentProfile;
             const httpServer = addShutdown(http.createServer());
             const httpsServer = addShutdown(
                 https.createServer({
                     key: localCAKeyString,
                     cert: localCAString,
-                    ciphers: 'ALL:!LOW:!DSS:!EXP'
-                }),
-                { suppressCloseErrors: ['ERR_SERVER_NOT_RUNNING'] }
+                    ciphers: 'ALL:!LOW:!DSS:!EXP',
+                    SNICallback: sNICallback
+                })
             );
             httpServer.on('connect', (cliReq, cliSoc, cliHead) => {
+                const connectionEstablished = [false];
                 const url = new URL(`http://${formatUrl(cliReq.url)}`);
-                const port = url.port || '443';
-                const hostname = url.hostname;
+                let port = url.port || '443';
+                let hostname = url.hostname;
                 logInfo(`[HTTP Proxy][${hostname}:${port}] CONNECT request received.`);
-                let isMitm = false;
                 if (profile !== null) {
                     if (
                         gethttpsFixedRule(profile)[`${hostname}:${port}`] ||
                         getWildcardRule(gethttpsFixedRule(profile), hostname, port)
                     ) {
-                        isMitm = true;
+                        port = httpsPort;
+                        hostname = '127.0.0.1';
                     } else if (inHostUsingProxy(profile, hostname) && !inHostBypassProxy(profile, hostname)) {
-                        isMitm = true;
+                        port = httpsPort;
+                        hostname = '127.0.0.1';
                     }
                 }
-
                 // HTTP server sets allowHalfOpen=true on sockets by default.
                 // For CONNECT tunnels, when the browser sends FIN it means the connection is done
                 // (TLS close_notify was already handled inside the tunnel). Disable half-open so
                 // the proxy sends FIN back immediately, preventing lingering FIN_WAIT_2 states.
                 cliSoc.allowHalfOpen = false;
-
-                if (isMitm) {
-                    // MITM path: TLS-terminate directly on cliSoc and inject into httpsServer.
-                    const logPrefix = `[HTTP Proxy][MITM][${hostname}:${port}]`;
-                    let tlsSocket = null;
-                    const cleanup = once((err) => {
-                        safeDestroy(tlsSocket, err, logPrefix);
-                        safeDestroy(cliSoc, err, logPrefix);
-                    });
-                    cliSoc.on('error', (err) => {
-                        if (!IGNORED_ERROR_CODE[err?.code]) {
-                            logError(`${logPrefix} client socket error:${JSON.stringify(err)}`);
-                        }
-                        cleanup(err);
-                    });
-                    cliSoc.on('close', () => cleanup());
-                    cliSoc.write('HTTP/1.1 200 Connection Established\r\nProxy-agent: Checkout-Proxy\r\n\r\n', () => {
-                        if (cliSoc.destroyed) return;
-                        const secureContext = getSecureContext(hostname, (_, ctx) => ctx);
-                        tlsSocket = new tls.TLSSocket(cliSoc, {
-                            isServer: true,
-                            server: httpsServer,
-                            secureContext
-                        });
-                        tlsSocket.on('error', (err) => {
-                            if (!IGNORED_ERROR_CODE[err?.code]) {
-                                logError(`${logPrefix} TLS error: ${JSON.stringify(err)}`);
-                            }
-                            cleanup(err);
-                        });
-                        tlsSocket.on('close', () => cleanup());
-                        tlsSocket.on('secure', () => {
-                            httpsServer.emit('secureConnection', tlsSocket);
-                        });
-                    });
-                    return;
-                }
-
-                const connectionEstablished = [false];
                 let svrSoc = null;
                 const logPrefix = `[HTTP Proxy][${hostname}:${port}]`;
                 const cleanup = once((err) => {
@@ -721,7 +685,7 @@ export const getStartServers = (errorStateCallback, serverErrorCallback) => {
                         safeWrite(
                             cliSoc,
                             `HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\n\r\n` +
-                                `server socket error occurred in http proxy when accessing ${hostname}:${port}!\nerror:${JSON.stringify(err)}\r\n\r\n`,
+                            `server socket error occurred in http proxy when accessing ${hostname}:${port}!\nerror:${JSON.stringify(err)}\r\n\r\n`,
                             logPrefix
                         );
                     }
@@ -1010,12 +974,11 @@ export const getStartServers = (errorStateCallback, serverErrorCallback) => {
                 safeDestroy(socket, null, `[HTTP Proxy][${req.url}]`);
             });
             httpServer.listen(httpPort, listenOn || '127.0.0.1', () => {
-                logInfo(`HTTP Proxy server listening on ${listenOn || '127.0.0.1'}:${httpPort}`);
-                resolve({
-                    startedHttpServer: httpServer,
-                    startedHttpsServer: httpsServer,
-                    usingFallbackCert
-                });
+                logInfo(`HTTP Proxy server listening on localhost:${httpPort}`);
+                startedServers++;
+                if (startedServers === 2) {
+                    resolve({ startedHttpServer: httpServer, startedHttpsServer: httpsServer, usingFallbackCert });
+                }
             });
 
             httpsServer.on('request', (clientReq, clientRes) => {
@@ -1238,7 +1201,7 @@ export const getStartServers = (errorStateCallback, serverErrorCallback) => {
                 });
             });
             httpsServer.on('error', (err) => {
-                serverErrorHandler?.(err, 'HTTPS', httpPort);
+                serverErrorHandler?.(err, 'HTTPS', httpsPort);
             });
             httpsServer.on('clientError', (err, soc) => {
                 logError(`[HTTPS Proxy] clientError error occurred:${JSON.stringify(err)}`);
@@ -1250,6 +1213,13 @@ export const getStartServers = (errorStateCallback, serverErrorCallback) => {
                     '[Checkout-Proxy]HTTP/1.1 501 Not Implemented\r\nContent-Type: text/plain\r\n\r\nUpgrade not implemented.\r\n'
                 );
                 safeDestroy(socket, null, `[HTTPS Proxy][${req.url}]`);
+            });
+            httpsServer.listen(httpsPort, '127.0.0.1', () => {
+                logInfo(`Local HTTPS MITM server listening on localhost:${httpsPort}`);
+                startedServers++;
+                if (startedServers === 2) {
+                    resolve({ startedHttpServer: httpServer, startedHttpsServer: httpsServer, usingFallbackCert });
+                }
             });
         });
 };

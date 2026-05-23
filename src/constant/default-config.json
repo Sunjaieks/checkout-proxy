@@ -1,7 +1,7 @@
 {
   "configVersion": 3,
   "appPort": [
-    18881
+    18881, 18882
   ],
   "profile": [
     {

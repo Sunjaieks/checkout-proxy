@@ -85,8 +85,9 @@ export const isConfigVersionOutdated = (currentConfig, defaultConfig) =>
 export const isPortInvalid = (config) =>
     !config.appPort ||
     !Array.isArray(config.appPort) ||
-    config.appPort.length < 1 ||
-    !Number.isInteger(config.appPort[0]);
+    config.appPort.length !== 2 ||
+    !Number.isInteger(config.appPort[0]) ||
+    !Number.isInteger(config.appPort[1]);
 export const hashStringSegment = (str) => {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -127,7 +128,7 @@ export const createReusableFunction = (functionString) => Function.call(null, 'r
 export const checkConfig = (config) => {
     const configObj = JSON.parse(config);
     if (isPortInvalid(configObj)) {
-        throw new Error('Invalid appPort format. Must be an array with a valid port number.');
+        throw new Error('Invalid appPort format. Must be an array of two numbers.');
     }
     if (!Array.isArray(configObj.profile)) {
         throw new Error('Invalid profile format. Must be an array.');

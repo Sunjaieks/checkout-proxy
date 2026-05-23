@@ -82,7 +82,7 @@ It enables you to intercept, inspect, and modify HTTP/HTTPS traffic with ease, f
             *   **Toggle System Proxy** Toggle OS-level proxy settings (useful for Safari and iOS devices). Current state is shown below the button.
         *   **Console:** Open Request Console for live request logs.
         *   **Direct Connect:** Start the proxy server without any fixed routing rules or remote upstream proxy.
-        *   **Stop:** Stop all running proxy servers (default port 18881).
+        *   **Stop:** Stop all running proxy servers (default ports 18881 and 18882).
     *   **Reset Options Button(in Config Editor):**
         *   **Reset text area to factory config:** Original Default Config is the configuration file shipped with this application. It will not be changed by any user operation.
         *   **Restore text area from backup:** User Default Config is the configuration saved by choosing "Save current text as User Default Config" button.
@@ -122,6 +122,7 @@ The configuration is a JSON object with a `profile` array:
   "configVersion": 1,
   "appPort": [ // you must specify two ports for this APP
     18881, // the first Port reserved for this APP, default is 18881, you should always use this port to access Checkout Proxy,
+    18882 // the second Port reserved for this APP, default is 18882, you should never access this port directly
   ],
   // in case a profile having this field, APP will ask you to decide the value by showing a popup when you start this profile
   "toBeDecided": [

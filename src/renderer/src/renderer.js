@@ -2,6 +2,7 @@ import { toColorString } from '../../util/sharedUtil';
 import { generateQR } from './module/qr-code';
 
 const httpPortEl = document.getElementById('httpPort');
+const httpsPortEl = document.getElementById('httpsPort');
 const activeProfileNameEl = document.getElementById('activeProfileName');
 const activePlaceholderEl = document.getElementById('activePlaceholder');
 const activeProfileIndicatorEl = document.getElementById('activeProfileIndicator');
@@ -107,6 +108,7 @@ function renderProfilesStatus(activeProfileIndex, placeholders) {
 function updateStatusDisplay(status) {
     if (status.appPort) {
         httpPortEl.textContent = status.appPort[0];
+        httpsPortEl.textContent = status.appPort[1] ? `,${status.appPort[1]}` : '';
     }
 
     currentActiveProfileIndex = status.activeProfileIndex ?? currentActiveProfileIndex;
