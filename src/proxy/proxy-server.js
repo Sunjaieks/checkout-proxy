@@ -68,7 +68,7 @@ let rootCAString;
 let rootCAKeyString;
 
 const certCache = new LRUCache(10000, 1000 * 3600 * 240); // 10,000 entries, 10 day TTL
-const agentCache = new LRUCache(100, 1000 * 120, (item) => safeDestroy(item, null, '[AgentCache]', true)); // 100 entries, 2min ttl
+const agentCache = new LRUCache(100, 1000 * 240, (item) => safeDestroy(item, null, '[AgentCache]', true)); // 100 entries, 4min ttl
 
 const SERVER_REQUEST_TIMEOUT_SEC = 1200; // seconds
 
