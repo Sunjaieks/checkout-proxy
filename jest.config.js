@@ -1,39 +1,32 @@
 module.exports = {
-  testEnvironment: 'node',
+    testEnvironment: 'node',
 
-  // Transform configuration
-  transform: {
-    '^.+\\.js$': 'babel-jest',
-  },
+    // Only discover tests and build the module map under src/.
+    roots: ['<rootDir>/src'],
 
-  // Module file extensions
-  moduleFileExtensions: ['js', 'json'],
+    // Transform configuration
+    transform: {
+        '^.+\\.js$': 'babel-jest'
+    },
 
-  // Test file patterns - standard Jest patterns
-  testMatch: [
-    '**/__tests__/**/*.test.js',
-    '**/?(*.)+(spec|test).js'
-  ],
+    // Module file extensions
+    moduleFileExtensions: ['js', 'json'],
 
-  // Coverage configuration
-  collectCoverageFrom: [
-    'src/**/*.js',
-    '!src/**/*.test.js',
-    '!src/**/__tests__/**',
-    '!src/**/*.spec.js',
-  ],
+    // Test file patterns - standard Jest patterns
+    testMatch: ['**/__tests__/**/*.test.js', '**/?(*.)+(spec|test).js'],
 
-  // Transform ignore patterns
-  transformIgnorePatterns: [
-    'node_modules/(?!(.*\\.mjs$))',
-  ],
+    // Coverage configuration
+    collectCoverageFrom: ['src/**/*.js', '!src/**/*.test.js', '!src/**/__tests__/**', '!src/**/*.spec.js'],
 
-  // Test timeout (useful for integration tests)
-  testTimeout: 10000,
+    // Transform ignore patterns
+    transformIgnorePatterns: ['node_modules/(?!(.*\\.mjs$))'],
 
-  // Clear mocks between tests
-  clearMocks: true,
+    // Test timeout (useful for integration tests)
+    testTimeout: 10000,
 
-  // Restore mocks after each test
-  restoreMocks: true,
+    // Clear mocks between tests
+    clearMocks: true,
+
+    // Restore mocks after each test
+    restoreMocks: true
 };

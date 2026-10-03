@@ -17,8 +17,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run dist:mac` - Create macOS DMG installer
 
 **Dependencies:**
-- Node.js version: 22.16.0
-- npm version: 10.9.2
+- Electron: 44.4.5 (bundles Node.js 24.21.0, Chromium 152)
+- Node.js version: >= 24.5.0 (required by the built-in proxy support used by the proxy core; see `engines` in package.json)
+- npm version: >= 10.9.4
 
 ## Architecture Overview
 
@@ -40,8 +41,9 @@ This is an Electron-based HTTPS proxy application with dynamic certificate gener
 - Help window: Displays README.md content as formatted help
 
 **Proxy Core (`src/proxy/`):**
-- `proxy-server.js` - HTTP/HTTPS proxy implementation with SNI callback
-- `agent.js` - Custom HTTP agent for upstream proxy support
+- `proxy-server.js` - HTTP/HTTPS proxy implementation with SNI callback. Upstream-proxy
+  forwarding uses Node's built-in proxy support (the `proxyEnv` Agent option, Node >= 24.5)
+  via `getProxyAgent()` — this replaced the former hand-rolled `agent.js` (`CustomHttpAgent`).
 - `cache.js` - LRU cache for generated certificates
 - Certificate generation using node-forge with dynamic SNI
 
@@ -82,7 +84,6 @@ This is an Electron-based HTTPS proxy application with dynamic certificate gener
 - Uses one local port: for HTTP proxy (default 18881), another port for HTTPS MITM is eliminated by inline TLS termination
 - Profiles define different upstream proxy configurations for different development scenarios
 - Configuration changes require stopping and restarting the proxy servers
-- Legacy proxy implementation exists in `legacy/` directory but is not actively used
 
 ## Merge Port
 Eliminate httpsServer's dedicated listen port by doing inline TLS termination in the HTTP CONNECT handler — wrap cliSoc directly with tls.TLSSocket and emit secureConnection on httpsServer.

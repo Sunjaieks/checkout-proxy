@@ -1,4 +1,4 @@
-import { STANDARD_LIGHTNESS, STANDARD_SATURATION } from '../constant/constant';
+import { MCP_DEFAULT_HOST, MCP_DEFAULT_PORT, STANDARD_LIGHTNESS, STANDARD_SATURATION } from '../constant/constant';
 
 export const gethostUsingProxy = (profile) => profile?.proxy?.hostUsingProxy || [];
 export const gethostBypassProxy = (profile) => profile?.proxy?.hostBypassProxy || [];
@@ -136,12 +136,22 @@ export const checkConfig = (config) => {
         throw new Error('Invalid profile name. Name is required for each profile.');
     }
     configObj.profile.forEach(checkProfile);
-    checkGlobalSettings(config.globalSettings);
+    checkGlobalSettings(configObj.globalSettings);
     return configObj;
+};
+export const setDefaultField = (config) => {
+    config.globalSettings = config.globalSettings ?? {};
+    config.globalSettings.ai = config.globalSettings.ai ?? {};
+    if (!isPortValid(config.globalSettings.ai.mcpPort)) {
+        config.globalSettings.ai.mcpPort = MCP_DEFAULT_PORT;
+    }
 };
 export const checkProfile = (profile) => {
     if (!profile?.name) {
         throw new Error('Invalid profile name. Name is required for each profile.');
+    }
+    if (profile?.decorator && typeof profile.decorator !== 'string') {
+        throw new Error('Invalid profile decorator. It must be a string (any text, including UTF-8 icons).');
     }
     if (profile?.toBeDecided?.length > 2) {
         throw new Error('Invalid profile. Maximum 2 items in field of toBeDecided are allowed.');
@@ -154,7 +164,100 @@ export const checkGlobalSettings = (globalSettings) => {
     Object.entries(globalSettings?.profileSet || {}).forEach(([profileName, profile]) => {
         checkWildcardForFixedRule(profile, `globalSettings.profileSet[${profileName}]`);
     });
+    checkAiSettings(globalSettings?.ai);
     return globalSettings;
+};
+
+export const isPortValid = (port) => Number.isInteger(port) && port >= 1 && port <= 65535;
+
+/**
+ * Validate the optional `globalSettings.ai` config field.
+ * The field is optional; absence is valid and yields built-in defaults at runtime.
+ * When present it must be an object with optional `mcpEnabled` (boolean),
+ * `mcpPort` (integer 1-65535), `guiCommand` (string) and `guiPort` (integer 1-65535)
+ * members. The first two control the built-in MCP server; the last two control the
+ * AI Desktop (cloudcli) launcher. Throws on malformed input.
+ */
+export const checkAiSettings = (ai) => {
+    if (ai === undefined || ai === null) return ai;
+    if (typeof ai !== 'object' || Array.isArray(ai)) {
+        throw new Error(
+            'Invalid ai. Must be an object with optional "mcpEnabled" (boolean), "mcpPort" (integer), "guiCommand" (string) and "guiPort" (integer) fields.'
+        );
+    }
+    if ('mcpEnabled' in ai && typeof ai.mcpEnabled !== 'boolean') {
+        throw new Error('Invalid ai.mcpEnabled. Must be a boolean (true or false).');
+    }
+    if ('mcpPort' in ai && ai.mcpPort !== undefined && ai.mcpPort !== null && !isPortValid(ai.mcpPort)) {
+        throw new Error('Invalid ai.mcpPort. Must be an integer between 1 and 65535.');
+    }
+    if (
+        'guiCommand' in ai &&
+        ai.guiCommand !== undefined &&
+        ai.guiCommand !== null &&
+        typeof ai.guiCommand !== 'string'
+    ) {
+        throw new Error('Invalid ai.guiCommand. Must be a string.');
+    }
+    // guiPort may be left empty (''/undefined/null) to mean "AI Desktop not configured".
+    // When set it is the plain port (1-65535) that AI Desktop serves on / the window loads.
+    if (
+        'guiPort' in ai &&
+        ai.guiPort !== undefined &&
+        ai.guiPort !== null &&
+        ai.guiPort !== '' &&
+        !isPortValid(ai.guiPort)
+    ) {
+        throw new Error('Invalid ai.guiPort. Must be an integer between 1 and 65535.');
+    }
+    return ai;
+};
+
+/**
+ * Resolve the effective MCP server settings from the optional `globalSettings.ai`
+ * config field. The MCP server always binds to loopback for safety, so `host` is not
+ * user-configurable. `enabled` defaults to false unless `ai.mcpEnabled` is explicitly
+ * true. `port` is read as-is from `ai.mcpPort`; the factory config and the settings UI
+ * supply/validate a valid port.
+ */
+export const getMcpServerSettings = (config) => {
+    const ai = config?.globalSettings?.ai;
+    const raw = (typeof ai === 'object' && ai) || {};
+    return {
+        enabled: raw.mcpEnabled === true,
+        port: raw.mcpPort,
+        host: MCP_DEFAULT_HOST
+    };
+};
+
+/**
+ * Whether a configuration change actually requires the MCP server to be rebound.
+ *
+ * Saving the configuration must not bounce the MCP server for unrelated edits. An MCP
+ * client's `manage_profile` call is served *by* that server, and the save it triggers runs
+ * inside the request: closing the server there waits for the in-flight connection to end,
+ * while that connection waits for the save to finish — a deadlock the client only sees as
+ * a timeout. Only `enabled`, `port` and `host` affect the listener, so only those are
+ * compared. A missing `applied` means the server has never been configured, which counts
+ * as a change.
+ */
+export const isMcpServerSettingsChanged = (applied, next) =>
+    !applied || !next || applied.enabled !== next.enabled || applied.port !== next.port || applied.host !== next.host;
+
+/**
+ * Resolve the AI Desktop (cloudcli) launcher settings from `globalSettings.ai`.
+ * `command` is the full command the AI Desktop tool spawns (trimmed; empty when unset). It
+ * may carry an inline env prefix, e.g. `SERVER_PORT=18887 cloudcli`.
+ * `port` is the plain port AI Desktop serves on — where the window loads (`http://localhost:<port>`)
+ * and what readiness is probed against. It is `undefined` when unconfigured.
+ */
+export const getAiGuiSettings = (config) => {
+    const ai = config?.globalSettings?.ai;
+    const raw = (typeof ai === 'object' && ai) || {};
+    return {
+        command: typeof raw.guiCommand === 'string' ? raw.guiCommand.trim() : '',
+        port: raw.guiPort
+    };
 };
 
 export const findHeaderWithIgnoreCase = (responseHeaders, headerKey) => {

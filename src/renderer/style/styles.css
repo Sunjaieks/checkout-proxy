@@ -55,11 +55,18 @@ input[type="checkbox" i] {
     max-width: 200px;
 }
 
+.title-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
 .status-info {
     text-align: right;
     font-size: 0.95em;
     color: #555;
     max-width: 350px;
+    min-width: 0;
 }
 
 .status-info p {
@@ -91,6 +98,7 @@ input[type="checkbox" i] {
     white-space: nowrap;
     scrollbar-width: none;
     overflow: scroll;
+    min-width: 0;
     cursor: pointer;
 }
 
@@ -123,7 +131,46 @@ input[type="checkbox" i] {
     margin-left: 5px;
     display: flex;
     gap: 10px;
-    /* Space between buttons */
+}
+
+.btn-ai-desktop-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 35px;
+    padding: 2px 0 0 0;
+    background: transparent;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.btn-ai-svg {
+    width: 40px;
+    transition: filter 0.2s ease, transform 0.15s ease;
+}
+
+.btn-ai-desktop-icon:hover {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.btn-ai-desktop-icon:hover .btn-ai-svg {
+    transform: scale(1.12);
+    filter: drop-shadow(0 0 4px rgba(44, 62, 80, 0.5));
+}
+
+.btn-ai-desktop-icon:active {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    transform: scale(0.92);
+}
+
+.btn-ai-desktop-icon:active .btn-ai-svg {
+    transform: scale(1.0);
 }
 
 button {
@@ -154,6 +201,8 @@ button {
 }
 
 #statusMessage {
+    white-space: pre-wrap;
+    word-break: break-all;
     align-items: center;
     margin: 2px 5px;
     font-size: 0.8em;
@@ -193,6 +242,7 @@ button {
     position: relative;
     --line-color: white;
     overflow: hidden;
+    cursor: pointer;
 
     &::before {
         content: "";
@@ -259,6 +309,37 @@ button {
     scrollbar-width: none;
     white-space: nowrap;
     font-weight: 420;
+}
+
+.profile-decorator {
+    margin-left: 4px;
+    white-space: nowrap;
+}
+
+.profile-anchor-icon {
+    cursor: pointer;
+}
+
+/* "copied" toast for the main window */
+.config-form-copied-toast {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #3a7cad;
+    color: #fff;
+    padding: 3px 16px;
+    border-radius: 4px;
+    font-size: 0.80em;
+    font-weight: 580;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.5s;
+    pointer-events: none;
+}
+
+.config-form-copied-toast.visible {
+    opacity: 1;
 }
 
 .profile-edit-icon {
@@ -506,6 +587,10 @@ button {
     /* Basic styling for markdown */
     line-height: 1.6;
     padding-bottom: 10px;
+    /* Nothing in the guide may widen the document: anything that cannot fit either
+       wraps (prose, inline code) or scrolls inside its own box (fenced blocks, tables). */
+    overflow-wrap: break-word;
+    max-width: 100%;
 }
 
 .markdown-body h1,
@@ -520,12 +605,60 @@ button {
     background-color: #f0f0f0;
     padding: 0.2em 0.4em;
     border-radius: 3px;
+    /* Inline code is often one long unbreakable token (a hackRequest example carries no
+       spaces). Without this it pushes past the text column and the whole window scrolls
+       sideways, so break it anywhere rather than letting it overflow. */
+    overflow-wrap: anywhere;
+}
+
+.markdown-body pre {
+    /* The fenced block is the scroll container: it never grows past the text column, and
+       its overflow stays inside itself instead of reaching the document. */
+    max-width: 100%;
+    overflow-x: auto;
 }
 
 .markdown-body pre>code {
     display: block;
     padding: 10px;
+    /* Source formatting matters in a code block, so scroll it rather than reflow it —
+       and undo the inline-code wrapping inherited from the rule above. */
+    white-space: pre;
+    overflow-wrap: normal;
+    word-break: normal;
+    /* Grow to the longest line so the shaded background covers the whole scrollable
+       width; a plain block would only paint its own visible box and the text scrolled
+       into view would sit on the bare page. `min-width` keeps short blocks full-width,
+       and border-box stops the padding from adding a stray 20px of scroll. */
+    box-sizing: border-box;
+    width: max-content;
+    min-width: 100%;
+}
+
+.markdown-body table {
+    border-collapse: collapse;
+    margin: 12px 0;
+    display: block;
+    width: max-content;
+    max-width: 100%;
     overflow-x: auto;
+}
+
+.markdown-body th,
+.markdown-body td {
+    border: 1px solid #d0d7de;
+    padding: 6px 13px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.markdown-body thead th {
+    background-color: #f0f0f0;
+    font-weight: 600;
+}
+
+.markdown-body tbody tr:nth-child(even) {
+    background-color: #f6f8fa;
 }
 
 #downloadButton {
@@ -631,7 +764,7 @@ button {
     border-radius: 8px;
     border: 1px solid #ccc;
     border-top: none;
-    max-height: 200px;
+    max-height: 300px;
     overflow: scroll;
     z-index: 102;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
@@ -1014,6 +1147,127 @@ button {
 
 .tools-btn-proxy:hover {
     background: linear-gradient(135deg, #7f8c8d 0%, #6c7a7b 100%);
+}
+
+.tools-btn-ai {
+    background: linear-gradient(135deg, #a55cc4 0%, #8344a8 100%);
+    border-color: #8344a8;
+}
+
+.tools-btn-ai:hover {
+    background: linear-gradient(135deg, #8344a8 0%, #6e3990 100%);
+}
+
+/* AI Desktop failure popup — reuses .overlay + .tools-popup shell */
+#ai-help-overlay.active .ai-help-popup {
+    display: block;
+}
+
+.ai-help-popup {
+    max-width: 560px;
+    width: 92vw;
+    overflow: hidden;
+}
+
+.ai-help-popup-content {
+    padding: 14px 18px;
+    max-height: 62vh;
+    overflow-y: auto;
+    font-size: 0.9em;
+    line-height: 1.5;
+    color: #24292f;
+}
+
+.ai-help-popup-content p {
+    margin: 8px 0;
+}
+
+.ai-help-popup-content ul {
+    padding-left: 20px;
+    margin: 6px 0;
+}
+
+.ai-help-popup-content li {
+    margin: 4px 0;
+}
+
+.ai-help-popup-content code {
+    background: #eef0f2;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.9em;
+}
+
+.ai-help-popup-content .config-form-help-pre {
+    background: #1f2733;
+    color: #e6edf3;
+    border-radius: 6px;
+    padding: 8px 10px;
+    overflow-x: auto;
+    margin: 6px 0;
+}
+
+.ai-help-popup-content .config-form-help-pre code {
+    background: none;
+    color: inherit;
+    padding: 0;
+}
+
+.ai-help-ext-link {
+    color: #0969da;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.ai-help-ext-link:hover {
+    text-decoration: underline;
+}
+
+.ai-help-details {
+    margin-top: 12px;
+    border-top: 1px solid #e2e5e9;
+    padding-top: 10px;
+}
+
+.ai-help-details summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #57606a;
+}
+
+.ai-help-details pre {
+    background: #fff5f5;
+    border: 1px solid #ffd0d0;
+    color: #86181d;
+    border-radius: 6px;
+    padding: 8px 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    margin: 8px 0 0;
+}
+
+.ai-help-footer {
+    padding: 10px 18px 14px;
+    text-align: right;
+    border-top: 1px solid #e0e0e0;
+}
+
+.ai-help-close-btn {
+    background: #a55cc4;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 20px;
+    font-size: 0.9em;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.ai-help-close-btn:hover {
+    background: #8344a8;
 }
 
 .qr-popup {
