@@ -1,0 +1,693 @@
+.config-form {
+    padding: 14px;
+    overflow-y: auto;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+/* Section Card */
+.config-form-section {
+    background: #fff;
+    border: 1px solid #cdd5e0;
+    border-radius: 10px;
+    margin-bottom: 12px;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.08);
+}
+
+.config-form-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: #e2e9f2;
+    border-bottom: 1px solid #d0d8e2;
+    border-radius: 8px 8px 0 0;
+}
+
+.config-form[style*="--icon-color"] {
+    border-left: 3px solid var(--icon-color);
+    border-radius: 0;
+    position: relative;
+
+    &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: linear-gradient(to right, var(--icon-color) 0%, white 40%);
+    }
+}
+
+.config-form-section-title {
+    font-size: 0.9em;
+    font-weight: 600;
+    color: #333;
+}
+
+.config-form-section-body {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    row-gap: 10px;
+}
+
+.config-form-section-body>* {
+    margin-bottom: 0;
+}
+
+/* Help Button */
+.config-form-help-btn {
+    background: #f8f9fb;
+    border: none;
+    color: #3498db;
+    cursor: pointer;
+    padding: 0;
+    font-size: 12px;
+    font-weight: bold;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.config-form-help-btn:hover {
+    background: #3498db;
+    color: #fff;
+}
+
+.config-form[style*="--icon-color"] {
+    .config-form-help-btn {
+        color: var(--icon-color);
+    }
+
+    .config-form-help-btn:hover {
+        background: var(--icon-color);
+        color: #fff;
+    }
+}
+
+/* Field */
+.config-form-label {
+    display: block;
+    font-size: 0.8em;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 4px;
+}
+
+.config-form-field-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.config-form-field-row>.config-form-label {
+    margin-bottom: 0;
+}
+
+/* Text Input */
+.config-form-input {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid #d1d5da;
+    border-radius: 4px;
+    font-size: 0.88em;
+    font-family: 'Consolas', 'Monaco', monospace;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+
+.config-form-input:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.15);
+}
+
+/* Toggle Switch */
+.config-form-switch {
+    position: relative;
+    display: inline-block;
+    width: 36px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.config-form-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.config-form-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.2s;
+    border-radius: 20px;
+}
+
+.config-form-slider::before {
+    content: "";
+    position: absolute;
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.2s;
+    border-radius: 50%;
+}
+
+.config-form-switch input:checked+.config-form-slider {
+    background-color: #3498db;
+}
+
+.config-form-switch input:checked+.config-form-slider::before {
+    transform: translateX(16px);
+}
+
+/* Textarea */
+.config-form-textarea {
+    width: 100%;
+    min-height: 90px;
+    padding: 5px 10px;
+    border: 1px solid #d1d5da;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-family: 'Consolas', 'Monaco', monospace;
+    resize: vertical;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+    overflow-x: scroll;
+    white-space: nowrap;
+}
+
+.config-form-textarea:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.15);
+}
+
+.config-form-mini-textarea {
+    width: 100%;
+    min-height: 34px;
+    padding: 4px 8px;
+    border: 1px solid #d1d5da;
+    border-radius: 4px;
+    font-size: 0.82em;
+    font-family: 'Consolas', 'Monaco', monospace;
+    resize: vertical;
+    box-sizing: border-box;
+    overflow-x: scroll;
+    white-space: nowrap;
+}
+
+.config-form-mini-textarea:focus {
+    outline: none;
+    border-color: #3498db;
+}
+
+/* Key-Value Editor */
+.config-form-kv-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.config-form-kv-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.config-form-kv-key,
+.config-form-kv-value {
+    flex: 1;
+    padding: 5px 8px;
+    border: 1px solid #d1d5da;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-family: 'Consolas', 'Monaco', monospace;
+    box-sizing: border-box;
+}
+
+.config-form-kv-key:focus,
+.config-form-kv-value:focus {
+    outline: none;
+    border-color: #3498db;
+}
+
+/* Delete buttons */
+.config-form-delete-btn {
+    background: none;
+    border: none;
+    color: #9aa0a8;
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 14px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.config-form-delete-btn:hover {
+    color: #e74c3c;
+    background: #fdecea;
+}
+
+.config-form-add-btn-group {
+    display: flex;
+    gap: 8px;
+}
+
+/* Add buttons */
+.config-form-add-btn {
+    padding: 4px 12px;
+    background: #f0f4f9;
+    border: 1px dashed #b3c0ce;
+    border-radius: 4px;
+    color: #5a7282;
+    cursor: pointer;
+    font-size: 0.82em;
+    transition: all 0.2s;
+    align-self: flex-start;
+}
+
+.config-form-add-btn:hover:not(:disabled) {
+    background: #e3f2fd;
+    border-color: #3498db;
+    color: #3498db;
+}
+
+.config-form-add-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Clone button */
+.config-form-clone-btn,
+.config-form-copy-btn {
+    background: none;
+    border: none;
+    color: #8a95a2;
+    cursor: pointer;
+    padding: 2px 5px;
+    font-size: 14px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.config-form-clone-btn:hover,
+.config-form-copy-btn:hover {
+    color: #3498db;
+    background: #e3f2fd;
+}
+
+/* Profile select (inline with label) */
+.config-form-profile-select {
+    padding: 0 6px;
+    border: 1px solid #d1d5da;
+    border-radius: 4px;
+    font-size: 0.82em;
+    font-family: 'Consolas', 'Monaco', monospace;
+    background: #fff;
+    cursor: pointer;
+    max-width: 180px;
+}
+
+.config-form-field-label-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+/* Tags Editor */
+.config-form-tags-editor {
+    border: 1px solid #d1d5da;
+    border-radius: 4px;
+    padding: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-height: 24px;
+    align-items: center;
+}
+
+.config-form-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 4px 2px 8px;
+    background: #e8ecf0;
+    border-radius: 4px;
+    font-size: 0.82em;
+    font-family: 'Consolas', 'Monaco', monospace;
+    color: #333;
+}
+
+.config-form-tag>.config-form-delete-btn {
+    font-size: 11px;
+    padding: 0 3px;
+    line-height: 1;
+}
+
+.config-form-tag-input {
+    border: none;
+    outline: none;
+    font-size: 0.85em;
+    font-family: 'Consolas', 'Monaco', monospace;
+    flex: 1;
+    min-width: 100px;
+    padding: 2px 4px;
+    background: transparent;
+}
+
+/* Collapsible */
+.config-form-collapsible {
+    border: 1px solid #d5dbe4;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    overflow: hidden;
+}
+
+.config-form-collapsible-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    background: #eef2f7;
+    cursor: pointer;
+    user-select: none;
+    gap: 8px;
+}
+
+.config-form-collapsible-name {
+    width: 40%;
+    flex: none;
+    padding: 3px 6px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    font-size: 0.88em;
+    font-weight: 600;
+    font-family: 'Consolas', 'Monaco', monospace;
+    color: #444;
+    background: transparent;
+    cursor: text;
+}
+
+.config-form-collapsible-name:focus {
+    border-color: #3498db;
+    outline: none;
+    background: #fff;
+}
+
+.config-form-collapsible-arrow {
+    font-size: 10px;
+    color: #6d8499;
+    transition: transform 0.2s;
+    padding: 2px 4px;
+    flex-shrink: 0;
+}
+
+.config-form-collapsible.expanded .config-form-collapsible-arrow {
+    transform: rotate(90deg);
+}
+
+.config-form-collapsible-body {
+    display: none;
+    padding: 10px 12px;
+    border-top: 1px solid #d5dbe4;
+}
+
+.config-form-collapsible.expanded .config-form-collapsible-body {
+    display: block;
+}
+
+/* Rule Card */
+.config-form-rule-card {
+    border: 1px solid #e0e4e8;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    overflow: hidden;
+}
+
+.config-form-rule-header {
+    display: flex;
+    align-items: center;
+    padding: 5px 8px;
+    background: #f5f7fb;
+    gap: 6px;
+    cursor: pointer;
+}
+
+.config-form-rule-host {
+    width: 50%;
+    flex: none;
+    padding: 3px 6px;
+    border: 1px solid #d1d5da;
+    border-radius: 3px;
+    font-size: 0.85em;
+    font-family: 'Consolas', 'Monaco', monospace;
+    box-sizing: border-box;
+    cursor: text;
+}
+
+.config-form-rule-host:focus {
+    outline: none;
+    border-color: #3498db;
+}
+
+.config-form-rule-arrow {
+    font-size: 10px;
+    color: #8a95a2;
+    padding: 2px 4px;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+}
+
+.config-form-rule-card.expanded .config-form-rule-arrow {
+    transform: rotate(90deg);
+}
+
+/* Toggles row (two toggles side by side) */
+.config-form-toggles-row {
+    display: flex;
+    gap: 10px 30px;
+    align-items: center;
+}
+
+.config-form-toggle-item {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    flex: 1;
+    max-width: calc(50% - 15px);
+}
+
+.config-form-toggle-item .config-form-label {
+    margin-bottom: 0;
+}
+
+/* Host rules side by side */
+.config-form-host-rules-row, .config-form-hack-row {
+    display: flex;
+    gap: 12px;
+    &>.config-form-field {
+        flex: 1;
+        min-width: 0;
+    }
+}
+
+.config-form-rule-body {
+    display: none;
+    padding: 10px;
+    border-top: 1px solid #e0e4e8;
+    background: #fff;
+}
+
+.config-form-rule-card.expanded .config-form-rule-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Rules Editor */
+.config-form-rules-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Sub-section */
+.config-form-subsection {
+    margin-bottom: 10px;
+}
+
+.config-form-subsection:last-child {
+    margin-bottom: 0;
+}
+
+.config-form-subsection-header {
+    font-size: 0.82em;
+    font-weight: 600;
+    color: #666;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #eee;
+}
+
+/* Copy Dropdown */
+.config-form-copy-dropdown {
+    margin-bottom: 10px;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #d0e3f7;
+}
+
+.config-form-copy-dropdown>label {
+    display: block;
+    font-size: 0.78em;
+    font-weight: 600;
+    color: #2980b9;
+    margin-bottom: 4px;
+}
+
+.config-form-copy-dropdown code {
+    background: #e0ecf7;
+    padding: 1px 4px;
+    border-radius: 2px;
+    font-size: 0.92em;
+}
+
+.config-form-global-var-select {
+    width: 100%;
+    padding: 4px 8px;
+    border: 1px solid #d0e3f7;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-family: 'Consolas', 'Monaco', monospace;
+    background: #fff;
+    cursor: pointer;
+}
+
+/* Help Modal */
+.config-form-help-modal {
+    display: flex;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease-in-out, visibility 0.3s;
+}
+
+.config-form-help-modal.visible {
+    visibility: visible;
+    opacity: 1;
+}
+
+.config-form-help-content {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    max-width: 500px;
+    width: 85%;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.config-form-help-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f8f9fb;
+    border-radius: 10px 10px 0 0;
+}
+
+.config-form-help-title {
+    font-weight: 600;
+    font-size: 0.95em;
+    color: #333;
+}
+
+.config-form-help-close {
+    background: none;
+    border: none;
+    font-size: 16px;
+    color: #999;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+
+.config-form-help-close:hover {
+    color: #333;
+}
+
+.config-form-help-body {
+    padding: 14px 16px;
+    overflow-y: auto;
+    font-size: 0.88em;
+    line-height: 1.6;
+    color: #444;
+}
+
+.config-form-help-body p {
+    margin: 0 0 8px;
+}
+
+.config-form-help-body code {
+    background: #f0f0f0;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.9em;
+}
+
+.config-form-help-body ul {
+    margin: 4px 0 8px;
+    padding-left: 20px;
+}
+
+.config-form-help-body li {
+    margin-bottom: 4px;
+}
+
+/* Copied notification */
+.config-form-copied-toast {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--icon-color, #16a085);
+    color: #fff;
+    padding: 3px 16px;
+    border-radius: 4px;
+    font-size: 0.80em;
+    font-weight: 580;
+    z-index: 1;
+    opacity: 0;
+    transition: opacity 0.5s;
+    pointer-events: none;
+}
+
+.config-form-copied-toast.visible {
+    opacity: 1;
+}

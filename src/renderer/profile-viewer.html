@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Effective Profile</title>
+    <meta content="worker-src blob:; script-src data: 'self'; style-src 'self' 'unsafe-inline';" http-equiv="Content-Security-Policy">
+    <link href="./style/styles.css" rel="stylesheet">
+</head>
+<body style="padding-bottom: 0">
+<div class="editor-container">
+    <div class="editor-container-title">
+        <div class="editor-container-title-inner">
+            <h2 style="font-family: 'Georgia', serif;">Effective Profile</h2>
+        </div>
+    </div>
+    <div class="textarea-and-message">
+        <div class="text-editor" id="profileViewerEditor" style="flex: 1; min-height: 0;"></div>
+        <p id="infoOrErrorMessage"></p>
+    </div>
+    <div class="editor-actions">
+        <div></div>
+        <div style="padding: 0; margin-right: 5px">
+            <button id="btnClose" class="button-common">Close</button>
+        </div>
+    </div>
+</div>
+<script type="module" src="./src/profile-viewer-renderer.js"></script>
+</body>
+</html>

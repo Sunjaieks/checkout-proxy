@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Json Profile</title>
+    <meta content="worker-src blob:; script-src data: 'self'; style-src 'self' 'unsafe-inline';" http-equiv="Content-Security-Policy">
+    <link href="./style/styles.css" rel="stylesheet">
+    <link href="./style/config-form.css" rel="stylesheet">
+</head>
+<body style="padding-bottom: 0">
+<div class="editor-container">
+    <div  class="editor-container-title-bigger">
+        <div  class="editor-container-title-inner-wrap">
+            <div  class="editor-container-title-inner">
+                <h2 id="title" style="font-family: 'Georgia', serif;">Edit</h2>
+                <span id="profileEditIcon" class="profile-editor-icon"></span>
+            </div>
+            <div  class="editor-container-title-profile-name"></div>
+        </div>
+        <div class='editor-category'>
+            <div class="edit-tab-button selected"  id="profileUIButton">profile</div>
+            <div class="edit-tab-button"  id="configButton">profile(json)</div>
+            <div class="edit-tab-button"  id="globalSettingsUIButton">global settings</div>
+            <div class="edit-tab-button"  id="globalSettingsButton">global settings(json)</div>
+        </div>
+    </div>
+    <div class="textarea-and-message">
+        <div class="text-editor multiple" id="configEditor"></div>
+        <div class="config-form-container" id="profileFormContainer"></div>
+        <div class="config-form-container" id="globalSettingsFormContainer"></div>
+        <p id="infoOrErrorMessage" style="margin-left: 5px"></p>
+    </div>
+    <div class="editor-actions">
+        <div style="padding: 0; margin-left: 5px">
+            <button id="btnMore"  class="button-common">More</button>
+        </div>
+        <div style="padding: 0; margin-right: 5px">
+            <button id="btnAbort"  class="button-common">Abort</button>
+            <button id="btnSaveAndClose"  class="button-common">Save and Close</button>
+        </div>
+    </div>
+</div>
+<script type="module" src="./src/profile-editor-renderer.js"></script>
+</body>
+</html>
