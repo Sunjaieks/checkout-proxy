@@ -16,7 +16,7 @@ export class LRUCache {
         }
     }
 
-    get(key) {
+    get(key, refreshTtl = false) {
         const value = this.cache.get(key);
         if (value) {
             if (this.ttl > 0 && new Date() - value[1] > this.ttl) {
@@ -25,7 +25,7 @@ export class LRUCache {
                 return null;
             }
             this.cache.delete(key);
-            this.cache.set(key, value);
+            this.cache.set(key, refreshTtl ? [value[0], new Date()] : value);
             return value[0];
         }
         return null;

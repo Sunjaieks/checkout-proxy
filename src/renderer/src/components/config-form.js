@@ -1,4 +1,10 @@
 import { toColorString, escapeHtml } from '../../../util/sharedUtil';
+import {
+    MCP_DEFAULT_PORT,
+    AI_GUI_DEFAULT_PORT,
+    AI_GUI_DEFAULT_COMMAND,
+    AI_DESKTOP_HELP_HTML
+} from '../../../constant/constant';
 
 class ConfigForm {
     static MERGE_BEHAVIOR = `                
@@ -14,6 +20,28 @@ class ConfigForm {
                     </li>
                 </ul>`;
     static HELP_CONTENT = {
+        ai: {
+            title: 'AI',
+            body: `
+                <p>🤖 AI integrations for this app: a built-in <b>MCP server</b> (control the proxy from AI clients) and the <b>AI Desktop</b> launcher (a local AI workspace).</p>
+                ${AI_DESKTOP_HELP_HTML}
+                <p><b style="font-size: 1.2em">MCP Server</b> 🛰️ A local <b>Model Context Protocol</b> server that lets AI agents drive this app.</p>
+                <ul>
+                    <li><code>mcpEnabled</code> Turn the MCP server on/off. Changes apply after you save.</li>
+                    <li><code>mcpPort</code> 🔌 The loopback port the MCP server listens on (1-65535, default <code>${MCP_DEFAULT_PORT}</code>).</li>
+                </ul>
+                <p>An AI client can start a profile (optionally with <code>toBeDecided</code> values), stop the proxy, switch to Direct Connect, list profiles, and inspect the effective profile.</p>
+                <p><b>Add this to your AI tool's MCP settings</b> 🔌</p>
+                <pre class="config-form-help-pre"><code>"mcpServers": {
+    "checkout-proxy-mcp": {
+      "type": "http",
+      "url": "http://127.0.0.1:${MCP_DEFAULT_PORT}/mcp"
+    }
+ }</code></pre>
+                <p>If you changed <code>mcpPort</code>, update <code>${MCP_DEFAULT_PORT}</code> in the URL accordingly.</p>
+                <p>🔒 The MCP server always binds to <code>127.0.0.1</code> (loopback) only, so the host is not configurable. Any local process that can reach the port can control the proxy.</p>
+            `
+        },
         others: {
             title: 'Others',
             body: `
@@ -125,6 +153,9 @@ class ConfigForm {
                         <code>name</code> Profile name (supports <code>{{var}}</code>).
                     </li>
                     <li>
+                        <code>decorator</code> 🏷️ Optional free-form label shown right after the name on the main window.(e.g. <code>🔥</code>, <code>⭐️</code>).
+                    </li>
+                    <li>
                         <code>toBeDecided</code> Ask the user to choose values when starting.
                         <br/>
                         Format: <code>varName=val1,val2,val3</code>
@@ -226,6 +257,14 @@ class ConfigForm {
             ConfigForm.helpModal.classList.remove('visible');
         });
         ConfigForm.helpModal.addEventListener('click', (e) => {
+            // Open help external links (e.g. the Node.js download link) in the system browser
+            // instead of navigating this window.
+            const extLink = e.target.closest('.ai-help-ext-link');
+            if (extLink) {
+                e.preventDefault();
+                window.electronAPI.openExternalLink(extLink.getAttribute('href'));
+                return;
+            }
             if (e.target === ConfigForm.helpModal) ConfigForm.helpModal.classList.remove('visible');
         });
         document.addEventListener(
@@ -267,31 +306,60 @@ class ConfigForm {
         </div>`;
     }
 
-    renderToggleConfig(...toggles) {
-        const renderItem = ({ label, checked, dataPath }) =>
-            `<div class="config-form-toggle-item">
-                <span class="config-form-label">${escapeHtml(label)}</span>
+    // Render one half of a paired row. `spec.kind` selects one of three widgets:
+    //   'input'  → label above a full-width text input (spec: label, dataPath, value, placeholder)
+    //   'number' → label at left, small numeric input at right (spec: label, dataPath, value, placeholder)
+    //   'toggle' → label at left, an on/off switch at right (spec: label, dataPath, checked)
+    // A missing spec renders an empty half. Halves are equal width, so every left-half label
+    // lines up across rows and every right-half label lines up across rows.
+    renderPairHalf(spec) {
+        if (!spec) return `<div class="config-form-pair-half"></div>`;
+        const label = `<span class="config-form-label">${escapeHtml(spec.label)}</span>`;
+        if (spec.kind === 'toggle') {
+            return `<div class="config-form-pair-half config-form-pair-inline">
+                ${label}
                 <label class="config-form-switch">
-                    <input type="checkbox" data-path="${dataPath}" ${checked ? 'checked' : ''}>
+                    <input type="checkbox" data-path="${spec.dataPath}" ${spec.checked ? 'checked' : ''}>
                     <span class="config-form-slider"></span>
                 </label>
             </div>`;
-        const rows = [];
-        for (let i = 0; i < toggles.length; i += 2) {
-            const items = toggles
-                .slice(i, i + 2)
-                .map(renderItem)
-                .join('');
-            rows.push(`<div class="config-form-toggles-row">${items}</div>`);
         }
-        return rows.join('');
+        if (spec.kind === 'number') {
+            return `<div class="config-form-pair-half config-form-pair-inline">
+                ${label}
+                <input type="number" inputmode="numeric" min="1" max="65535" step="1"
+                       class="config-form-input config-form-input-sm" data-path="${spec.dataPath}"
+                       value="${escapeHtml(String(spec.value ?? ''))}" placeholder="${escapeHtml(String(spec.placeholder ?? ''))}">
+            </div>`;
+        }
+        // 'input' (default): label above a full-width text input
+        return `<div class="config-form-pair-half">
+            ${label}
+            <input type="text" class="config-form-input" data-path="${spec.dataPath}"
+                   value="${escapeHtml(String(spec.value ?? ''))}" placeholder="${escapeHtml(String(spec.placeholder ?? ''))}">
+        </div>`;
     }
 
-    renderTextField(label, value, dataPath, placeholder) {
+    // Compose a row from a left and right half (either may be omitted to leave a blank column).
+    renderPairRow(left, right) {
+        return `<div class="config-form-pair-row">${this.renderPairHalf(left)}${this.renderPairHalf(right)}</div>`;
+    }
+
+    renderTextField(label, value, dataPath, placeholder, candidates) {
+        const input = `<input type="text" class="config-form-input" data-path="${dataPath}"
+                   value="${escapeHtml(value || '')}" placeholder="${escapeHtml(placeholder || '')}">`;
+        const control = candidates
+            ? `<div class="config-form-combo">
+                ${input}
+                <button type="button" class="config-form-combo-toggle" tabindex="-1" title="Show suggestions">▼</button>
+                <div class="config-form-combo-list">
+                    ${candidates.map((c) => `<div class="config-form-combo-option">${escapeHtml(c)}</div>`).join('')}
+                </div>
+            </div>`
+            : input;
         return `<div class="config-form-field">
             <label class="config-form-label">${escapeHtml(label)}</label>
-            <input type="text" class="config-form-input" data-path="${dataPath}"
-                   value="${escapeHtml(value || '')}" placeholder="${escapeHtml(placeholder || '')}">
+            ${control}
         </div>`;
     }
 
@@ -604,6 +672,21 @@ class ConfigForm {
         return result;
     }
 
+    collectAi(form) {
+        const mcpEnabledEl = form.querySelector('[data-path="ai.mcpEnabled"]');
+        const mcpPortEl = form.querySelector('[data-path="ai.mcpPort"]');
+        const guiCommandEl = form.querySelector('[data-path="ai.guiCommand"]');
+        const guiPortEl = form.querySelector('[data-path="ai.guiPort"]');
+        // guiPort is the plain port AI Desktop serves on. Keep empty (unconfigured) when blank.
+        const guiPortRaw = (guiPortEl?.value || '').trim();
+        return {
+            mcpEnabled: !!mcpEnabledEl?.checked,
+            mcpPort: parseInt(mcpPortEl?.value ?? MCP_DEFAULT_PORT, 10),
+            guiCommand: (guiCommandEl?.value || '').trim(),
+            guiPort: guiPortRaw === '' ? '' : parseInt(guiPortRaw, 10)
+        };
+    }
+
     collectProfileSetEditor(container) {
         if (!container) return {};
         const result = {};
@@ -636,6 +719,30 @@ class ConfigForm {
     bindEvents() {
         this.container.addEventListener('click', (e) => {
             const target = e.target;
+
+            // Combo box (e.g. Decorator): clicking the input or the ▼ toggle opens its
+            // suggestion list; clicking an option applies it. stopPropagation keeps this click
+            // from reaching the document-level listener (below) that closes open lists.
+            const combo = target.closest('.config-form-combo');
+            if (combo) {
+                e.stopPropagation();
+                const list = combo.querySelector('.config-form-combo-list');
+                const option = target.closest('.config-form-combo-option');
+                if (option) {
+                    const input = combo.querySelector('.config-form-input');
+                    input.value = option.textContent;
+                    input.focus();
+                    list.classList.remove('visible');
+                } else if (target.closest('.config-form-combo-toggle')) {
+                    list.classList.toggle('visible');
+                } else {
+                    list.classList.add('visible');
+                }
+                this.container.querySelectorAll('.config-form-combo-list.visible').forEach((other) => {
+                    if (other !== list) other.classList.remove('visible');
+                });
+                return;
+            }
 
             // Help button
             const helpBtn = target.closest('.config-form-help-btn');
@@ -781,6 +888,13 @@ class ConfigForm {
             }
         });
 
+        // Close any open combo box suggestion list when clicking elsewhere on the page.
+        document.addEventListener('click', () => {
+            this.container.querySelectorAll('.config-form-combo-list.visible').forEach((list) => {
+                list.classList.remove('visible');
+            });
+        });
+
         // Tag input: add on Enter
         this.container.addEventListener('keydown', (e) => {
             if (e.target.classList.contains('config-form-tag-input') && e.key === 'Enter') {
@@ -844,18 +958,57 @@ export class GlobalSettingsForm extends ConfigForm {
         const others = gs.others || {};
         const substitute = gs.substitute || {};
         const profileSet = gs.profileSet || {};
+        const ai = gs.ai || {};
+        const mcpEnabled = ai.mcpEnabled === true;
+        const mcpPort = Number.isInteger(ai.mcpPort) ? ai.mcpPort : MCP_DEFAULT_PORT;
+        const guiCommand = typeof ai.guiCommand === 'string' ? ai.guiCommand : '';
+        // guiCommand/guiPort are empty by default (AI Desktop not configured). guiPort is the
+        // plain port AI Desktop serves on / the window loads.
+        const guiPort = Number.isInteger(ai.guiPort) ? String(ai.guiPort) : '';
 
         this.container.innerHTML = `<div class="config-form">
             <div class="config-form-section">
+                ${this.renderSectionHeader('AI', 'ai')}
+                <div class="config-form-section-body" style="padding: 10px 14px">
+                    ${this.renderPairRow(
+                        {
+                            kind: 'input',
+                            label: 'GUI Command (set to empty to close AI Desktop):',
+                            dataPath: 'ai.guiCommand',
+                            value: guiCommand,
+                            placeholder: AI_GUI_DEFAULT_COMMAND
+                        },
+                        {
+                            kind: 'number',
+                            label: 'GUI Port:',
+                            dataPath: 'ai.guiPort',
+                            value: guiPort,
+                            placeholder: AI_GUI_DEFAULT_PORT
+                        }
+                    )}
+                    ${this.renderPairRow(
+                        { kind: 'toggle', label: 'MCP Enabled:', dataPath: 'ai.mcpEnabled', checked: mcpEnabled },
+                        {
+                            kind: 'number',
+                            label: 'MCP Port:',
+                            dataPath: 'ai.mcpPort',
+                            value: mcpPort,
+                            placeholder: MCP_DEFAULT_PORT
+                        }
+                    )}
+                </div>
+            </div>
+            <div class="config-form-section">
                 ${this.renderSectionHeader('Others', 'others')}
                 <div class="config-form-section-body">
-                    ${this.renderToggleConfig(
+                    ${this.renderPairRow(
                         {
+                            kind: 'toggle',
                             label: 'Add Agent Header:',
-                            checked: others.addAgentHeader,
-                            dataPath: 'others.addAgentHeader'
+                            dataPath: 'others.addAgentHeader',
+                            checked: others.addAgentHeader
                         },
-                        { label: 'Recording:', checked: others.recording, dataPath: 'others.recording' }
+                        { kind: 'toggle', label: 'Recording:', dataPath: 'others.recording', checked: others.recording }
                     )}
                 </div>
             </div>
@@ -879,6 +1032,9 @@ export class GlobalSettingsForm extends ConfigForm {
         if (!form) return {};
         const globalSettings = {};
 
+        // AI (MCP server + AI Desktop launcher)
+        globalSettings.ai = this.collectAi(form);
+
         // Others
         globalSettings.others = this.collectOthers(form);
 
@@ -895,6 +1051,29 @@ export class GlobalSettingsForm extends ConfigForm {
 }
 
 export class ProfileForm extends ConfigForm {
+    static DECORATOR_CANDIDATES = [
+        '🔥',
+        '⭐️',
+        '🚀',
+        '✅',
+        '⚠️',
+        '🐞',
+        '🧪',
+        '🔒',
+        '🌙',
+        '☀️',
+        '💡',
+        '🎯',
+        '🚧',
+        '🐢',
+        '⚡️',
+        '🧊',
+        '🎨',
+        '📌',
+        '🔧',
+        '🧭'
+    ];
+
     constructor(container, color, ruleCopied) {
         super(container, ruleCopied);
         this.profileColor = toColorString(color);
@@ -909,7 +1088,10 @@ export class ProfileForm extends ConfigForm {
             <div class="config-form-section">
                 ${this.renderSectionHeader('Basic Info', 'profileBasic')}
                 <div class="config-form-section-body">
-                    ${this.renderTextField('Profile Name:', p.name, 'name', 'Profile name (supports {{var}})')}
+                    <div class="config-form-name-row">
+                        ${this.renderTextField('Profile Name:', p.name, 'name', 'Profile name (supports {{var}})')}
+                        ${this.renderTextField('Decorator:', p.decorator, 'decorator', 'e.g. 🔥 / ⭐️', ProfileForm.DECORATOR_CANDIDATES)}
+                    </div>
                     <div class="config-form-field">
                         <label class="config-form-label">To Be Decided:</label>
                         ${this.renderTbdEditor(p.toBeDecided)}
@@ -964,6 +1146,10 @@ export class ProfileForm extends ConfigForm {
 
         // Name
         profile.name = form.querySelector('[data-path="name"]')?.value || '';
+
+        // Decorator (optional free-form label/icon shown after the name)
+        const decorator = form.querySelector('[data-path="decorator"]')?.value || '';
+        if (decorator) profile.decorator = decorator;
 
         // toBeDecided
         const tbd = this.collectTbdEditor(form.querySelector('.config-form-tbd-editor[data-path="toBeDecided"]'));

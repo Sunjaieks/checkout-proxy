@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Overscroll Bounce Test</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, sans-serif; display: flex; gap: 40px; padding: 40px; background: #f5f5f5; }
+h3 { margin-bottom: 8px; font-size: 14px; color: #333; }
+p { font-size: 12px; color: #888; margin-bottom: 8px; }
+
+.container {
+    width: 280px;
+    height: 320px;
+    overflow-y: scroll;
+    border: 1px solid #d1d5da;
+    border-radius: 6px;
+    background: #fff;
+    scrollbar-width: thin;
+}
+.inner {}
+.item {
+    padding: 14px 16px;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 14px;
+    user-select: none;
+}
+.item:last-child { border-bottom: none; }
+</style>
+</head>
+<body>
+
+<!-- A: Native elastic (macOS only, no JS) -->
+<div>
+    <h3>A: Native Elastic</h3>
+    <p>No JS — relies on macOS native</p>
+    <div class="container" id="a-container">
+        <div class="inner" id="a-inner"></div>
+    </div>
+</div>
+
+<!-- B: CSS transition bounce -->
+<div>
+    <h3>B: CSS Transition</h3>
+    <p>Pull → CSS transition bounce-back</p>
+    <div class="container" style="overscroll-behavior:none" id="b-container">
+        <div class="inner" id="b-inner"></div>
+    </div>
+</div>
+
+<!-- C: CSS animation bounce (keyframes) -->
+<div>
+    <h3>C: CSS Animation</h3>
+    <p>Pull → @keyframes bounce-back</p>
+    <div class="container" style="overscroll-behavior:none" id="c-container">
+        <div class="inner" id="c-inner"></div>
+    </div>
+</div>
+
+<script>
+// Populate all lists
+document.querySelectorAll('.inner').forEach(inner => {
+    for (let i = 1; i <= 30; i++) {
+        const d = document.createElement('div');
+        d.className = 'item';
+        d.textContent = 'Profile ' + i;
+        inner.appendChild(d);
+    }
+});
+
+/* ===== B: CSS transition approach ===== */
+(function() {
+    const el = document.getElementById('b-container');
+    const inner = document.getElementById('b-inner');
+    let overscroll = 0, locked = false, t0 = 0, timer = null;
+    const MAX = 25;
+
+    function bounce() {
+        if (locked) return;
+        clearTimeout(timer);
+        if (Math.abs(overscroll) < 2) {
+            overscroll = 0; inner.style.cssText = ''; return;
+        }
+        locked = true;
+        inner.style.transition = 'transform .3s cubic-bezier(.33,1,.68,1)';
+        inner.style.transform = 'translateY(0)';
+        setTimeout(() => {
+            inner.style.cssText = '';
+            overscroll = 0;
+            setTimeout(() => { locked = false; }, 500);
+        }, 310);
+    }
+
+    el.addEventListener('wheel', e => {
+        if (locked) return;
+        const atTop = el.scrollTop <= 0;
+        const atBot = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+        if ((atTop && e.deltaY < 0) || (atBot && e.deltaY > 0)) {
+            e.preventDefault();
+            if (!overscroll) t0 = performance.now();
+            if (performance.now() - t0 >= 200) { bounce(); return; }
+            const r = Math.max(.05, 1 - Math.abs(overscroll) / MAX);
+            overscroll += -e.deltaY * r * .15;
+            overscroll = Math.max(-MAX, Math.min(MAX, overscroll));
+            inner.style.transition = 'none';
+            inner.style.transform = `translateY(${overscroll}px)`;
+            clearTimeout(timer); timer = setTimeout(bounce, 50);
+        }
+    }, { passive: false });
+})();
+
+/* ===== C: CSS @keyframes approach ===== */
+(function() {
+    const el = document.getElementById('c-container');
+    const inner = document.getElementById('c-inner');
+    let overscroll = 0, locked = false, t0 = 0, timer = null;
+    const MAX = 25;
+
+    // Inject a dynamic @keyframes rule for the current overscroll value
+    const sheet = document.head.appendChild(document.createElement('style')).sheet;
+
+    function bounce() {
+        if (locked) return;
+        clearTimeout(timer);
+        if (Math.abs(overscroll) < 2) {
+            overscroll = 0; inner.style.cssText = ''; return;
+        }
+        locked = true;
+        // Create a keyframe that goes from current position to 0
+        const name = 'bounce-' + Date.now();
+        while (sheet.cssRules.length) sheet.deleteRule(0);
+        sheet.insertRule(`@keyframes ${name} {
+            from { transform: translateY(${overscroll}px); }
+            to   { transform: translateY(0); }
+        }`, 0);
+        inner.style.transition = 'none';
+        inner.style.animation = `${name} .3s cubic-bezier(.33,1,.68,1) forwards`;
+        inner.addEventListener('animationend', () => {
+            inner.style.cssText = '';
+            overscroll = 0;
+            setTimeout(() => { locked = false; }, 500);
+        }, { once: true });
+    }
+
+    el.addEventListener('wheel', e => {
+        if (locked) return;
+        const atTop = el.scrollTop <= 0;
+        const atBot = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+        if ((atTop && e.deltaY < 0) || (atBot && e.deltaY > 0)) {
+            e.preventDefault();
+            if (!overscroll) t0 = performance.now();
+            if (performance.now() - t0 >= 200) { bounce(); return; }
+            const r = Math.max(.05, 1 - Math.abs(overscroll) / MAX);
+            overscroll += -e.deltaY * r * .15;
+            overscroll = Math.max(-MAX, Math.min(MAX, overscroll));
+            inner.style.animation = 'none';
+            inner.style.transition = 'none';
+            inner.style.transform = `translateY(${overscroll}px)`;
+            clearTimeout(timer); timer = setTimeout(bounce, 50);
+        }
+    }, { passive: false });
+})();
+</script>
+</body>
+</html>

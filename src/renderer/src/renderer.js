@@ -1,5 +1,6 @@
 import { toColorString } from '../../util/sharedUtil';
 import { generateQR } from './module/qr-code';
+import { AI_DESKTOP_HELP_HTML } from '../../constant/constant';
 
 const httpPortEl = document.getElementById('httpPort');
 const activeProfileNameEl = document.getElementById('activeProfileName');
@@ -14,6 +15,7 @@ const placeholderOverlayEl = document.getElementById('placeholder-overlay');
 const placeholderDialogEl = document.getElementById('placeholder-dialog');
 const placeholderInputsEl = document.getElementById('placeholder-inputs');
 const placeholderOkBtn = document.getElementById('placeholder-ok-btn');
+const placeholderOptionsHostEl = document.getElementById('placeholder-options-host');
 const directConnectBtn = document.getElementById('btnDirectConnect');
 
 // More popup elements
@@ -25,6 +27,14 @@ const toolsOverlayEl = document.getElementById('tools-overlay');
 const toolsPopupEl = document.getElementById('tools-popup');
 const toolsProxyStatusEl = document.getElementById('tools-proxy-status');
 const toolsToggleProxyBtn = document.getElementById('tools-toggle-proxy');
+
+// AI Desktop failure popup elements (reuses the same .overlay as the Tools popup)
+const aiHelpOverlayEl = document.getElementById('ai-help-overlay');
+const aiHelpBodyEl = document.getElementById('ai-help-body');
+const aiHelpDetailsEl = document.getElementById('ai-help-details');
+const aiHelpDetailTextEl = document.getElementById('ai-help-detail-text');
+// Render the shared help content (same as [Global Settings] -> [AI]) once.
+aiHelpBodyEl.innerHTML = AI_DESKTOP_HELP_HTML;
 
 let placeHolderOptionsMap = {};
 let currentConfigData = null;
@@ -52,6 +62,47 @@ function debounce(func) {
         }
         isImmediately ? func.apply(context, args) : null;
     };
+}
+
+// A press that travels more than a few pixels before release is a text-selection
+// drag (e.g. highlighting a profile name to copy it), not a click on the row.
+const DRAG_THRESHOLD_PX = 4;
+let pressStartPoint = null;
+
+document.addEventListener(
+    'mousedown',
+    (event) => {
+        pressStartPoint = { x: event.clientX, y: event.clientY };
+    },
+    true
+);
+
+function isDragRelease(event) {
+    // detail === 0 means the click was not produced by a pointer (keyboard, synthetic).
+    if (!pressStartPoint || event.detail === 0) return false;
+    return (
+        Math.abs(event.clientX - pressStartPoint.x) > DRAG_THRESHOLD_PX ||
+        Math.abs(event.clientY - pressStartPoint.y) > DRAG_THRESHOLD_PX
+    );
+}
+
+// Lightweight "copied" toast, mirroring ConfigForm's toast in config-form.js.
+let copiedToastEl = null;
+let copiedToastTimer = null;
+function showCopiedToast(text) {
+    if (!copiedToastEl) {
+        copiedToastEl = document.createElement('div');
+        copiedToastEl.className = 'config-form-copied-toast';
+        document.body.appendChild(copiedToastEl);
+    }
+    copiedToastEl.textContent = text;
+    // Anchor the toast to the top-center of the profiles area (not the whole window).
+    const rect = profilesAreaEl.getBoundingClientRect();
+    copiedToastEl.style.top = `${rect.top + 8}px`;
+    copiedToastEl.style.left = `${rect.left + rect.width / 2}px`;
+    copiedToastEl.classList.add('visible');
+    clearTimeout(copiedToastTimer);
+    copiedToastTimer = setTimeout(() => copiedToastEl.classList.remove('visible'), 1000);
 }
 
 async function loadAppVersion() {
@@ -132,15 +183,15 @@ function updateStatusDisplay(status) {
 
     statusMessageEl.style.visibility = false;
     if (status.message) {
-        statusMessageEl.textContent = status.message;
+        statusMessageEl.innerHTML = status.message;
         statusMessageEl.style.color = 'green';
     }
     if (status.warning) {
-        statusMessageEl.textContent = status.warning;
+        statusMessageEl.innerHTML = status.warning;
         statusMessageEl.style.color = 'brown';
     }
     if (status.error) {
-        statusMessageEl.textContent = status.error;
+        statusMessageEl.innerHTML = status.error;
         statusMessageEl.style.color = 'red';
         // If error, ensure main indicator is off or error state
         if (!status.keepIconColor) {
@@ -180,6 +231,12 @@ function renderProfiles() {
         const nameEl = document.createElement('span');
         nameEl.className = 'profile-name';
         nameEl.textContent = profile.name || `Profile ${index}`;
+        if (profile.decorator) {
+            const decoratorEl = document.createElement('span');
+            decoratorEl.className = 'profile-decorator';
+            decoratorEl.textContent = profile.decorator;
+            nameEl.appendChild(decoratorEl);
+        }
 
         const anchorEl = document.createElement('span');
         anchorEl.className = 'profile-anchor-icon';
@@ -187,6 +244,16 @@ function renderProfiles() {
         const colorObj = currentConfigColor[index];
         anchorEl.style.setProperty('--icon-color', toColorString(colorObj));
         anchorEl.dataset.anchorcolor = colorObj.join(',');
+        anchorEl.title = 'Click to copy profile name';
+        anchorEl.addEventListener(
+            'click',
+            debounce((event) => {
+                event.preventDefault();
+                const nameToCopy = profile.name || `Profile ${index}`;
+                window.electronAPI.copyToClipboard(nameToCopy);
+                showCopiedToast(`"${nameToCopy}" copied`);
+            })
+        );
 
         const editEl = document.createElement('span');
         editEl.className = 'profile-edit-icon';
@@ -210,17 +277,21 @@ function renderProfiles() {
 
         const startButton = document.createElement('button');
         startButton.textContent = 'Start';
-        startButton.addEventListener(
-            'click',
-            debounce((event) => {
-                event.preventDefault();
-                if (profile.toBeDecided?.length > 0) {
-                    showPlaceholderDialog(index, profile.toBeDecided, startButton);
-                } else {
-                    window.electronAPI.startProxyProfile(index);
-                }
-            })
-        );
+
+        const onProfileClick = debounce((event) => {
+            if (event.target.closest('.profile-edit-icon') || event.target.closest('.profile-anchor-icon')) return;
+            if (profile.toBeDecided?.length > 0) {
+                showPlaceholderDialog(index, profile.toBeDecided, item, event.clientX);
+            } else {
+                window.electronAPI.startProxyProfile(index);
+            }
+        });
+        item.addEventListener('click', (event) => {
+            // Checked outside the debounce so a discarded drag does not consume the
+            // debounce window of the click that follows it.
+            if (isDragRelease(event)) return;
+            onProfileClick(event);
+        });
 
         const indicatorContainer = document.createElement('div');
         indicatorContainer.className = 'profile-indicator-container';
@@ -261,27 +332,23 @@ function repositionAndShowOptions(placeholderName, optionsContainer, alwaysShow 
         optionsContainer.dataset.repositioned = '1';
         const inputRect = currentInput.getBoundingClientRect();
         const viewportHeight = window.innerHeight;
-        const preferredHeight = 200;
-        const margin = 8;
+        const preferredHeight = Math.min(300, optionsContainer.childElementCount * 25);
+        const margin = 4;
 
         const spaceBelow = viewportHeight - inputRect.bottom;
         const spaceAbove = inputRect.top;
+        const needed = preferredHeight + margin * 2;
 
         optionsContainer.style.bottom = '';
         optionsContainer.style.top = '';
-        optionsContainer.style.maxHeight = `${preferredHeight}px`;
         optionsContainer.style.maxWidth = inputRect.width - 30 + 'px';
 
-        if (spaceBelow >= preferredHeight || spaceBelow > spaceAbove) {
+        const showBelow = spaceBelow >= needed || (spaceBelow >= spaceAbove && spaceAbove < needed);
+
+        if (showBelow) {
             optionsContainer.style.top = `${inputRect.bottom + margin}px`;
-            if (spaceBelow < preferredHeight) {
-                optionsContainer.style.maxHeight = `${spaceBelow - margin * 2}px`;
-            }
         } else {
             optionsContainer.style.bottom = `${viewportHeight - inputRect.top + margin}px`;
-            if (spaceAbove < preferredHeight) {
-                optionsContainer.style.maxHeight = `${spaceAbove - margin * 2}px`;
-            }
         }
         optionsContainer.style.left = `${inputRect.left}px`;
         optionsContainer.style.width = `${inputRect.width}px`;
@@ -317,7 +384,7 @@ function updateHighlight(input, allOptions, selectedOption, keyboard, placeholde
     option?.scrollIntoView({ block: 'nearest' });
 }
 
-function showPlaceholderDialog(profileIndex, rawPlaceholders, startButton) {
+function showPlaceholderDialog(profileIndex, rawPlaceholders, rowEl, clickX) {
     placeHolderOptionsMap = {};
     placeholderModalTabEls = [];
     placeholderModalTabFocusIndex = 0;
@@ -368,7 +435,10 @@ function showPlaceholderDialog(profileIndex, rawPlaceholders, startButton) {
         });
         group.appendChild(label);
         group.appendChild(input);
-        group.appendChild(optionsContainer);
+        // The options dropdown is position:fixed and must escape the dialog's
+        // backdrop-filter, which would otherwise become its containing block and
+        // throw off its coordinates. The host lives directly under <body>.
+        placeholderOptionsHostEl.appendChild(optionsContainer);
         input.onfocus = (e) => {
             currentInput = e.target;
         };
@@ -416,13 +486,13 @@ function showPlaceholderDialog(profileIndex, rawPlaceholders, startButton) {
     placeholderDialogEl.style.display = 'block';
     placeholderOverlayEl.classList.add('active');
 
-    const buttonRect = startButton.getBoundingClientRect();
+    const buttonRect = rowEl.getBoundingClientRect();
     const dialogRect = placeholderDialogEl.getBoundingClientRect();
     const viewportHeight = document.documentElement.clientHeight;
     const viewportWidth = document.documentElement.clientWidth;
 
     let top = buttonRect.bottom + 8;
-    let left = buttonRect.left;
+    let left = typeof clickX === 'number' ? clickX - 20 : buttonRect.left;
 
     if (top + dialogRect.height >= viewportHeight) {
         top = buttonRect.top - dialogRect.height - 8;
@@ -464,6 +534,7 @@ function hidePlaceholderDialog() {
     placeholderOverlayEl.classList.remove('active');
     placeholderDialogEl.style.display = 'none';
     placeholderInputsEl.innerHTML = '';
+    placeholderOptionsHostEl.innerHTML = '';
     while (placeholderDialogOnClickHandler.length > 0) {
         placeholderDialogEl.removeEventListener('click', placeholderDialogOnClickHandler.pop());
     }
@@ -484,6 +555,11 @@ document.addEventListener('keydown', (event) => {
             }
             return;
         }
+        // Close AI Desktop help popup if open
+        if (aiHelpOverlayEl.classList.contains('active')) {
+            hideAiHelpPopup();
+            return;
+        }
         // Close Tools popup if open
         if (toolsOverlayEl.classList.contains('active')) {
             hideToolsPopup();
@@ -496,10 +572,11 @@ document.addEventListener('keydown', (event) => {
                 inputAndOption[1].classList.remove('selected');
                 inputAndOption[1] = undefined;
             }
-            if (inputAndOption[0]?.nextElementSibling?.classList.contains('visible')) {
-                showList = true;
-                inputAndOption[0].nextElementSibling.classList.remove('visible');
-            }
+        });
+        // Escape closes any open dropdown first, and only then the dialog itself.
+        placeholderOptionsHostEl.querySelectorAll('.options-container.visible').forEach((container) => {
+            showList = true;
+            container.classList.remove('visible');
         });
         if (!showList) hidePlaceholderDialog();
     } else if (event.key === 'Tab') {
@@ -780,6 +857,57 @@ document.getElementById('tools-toggle-proxy').addEventListener(
     })
 );
 
+async function launchAiDesktop() {
+    const result = await window.electronAPI.openAiDesktop();
+    if (result && result.success === false) {
+        showAiHelpPopup(result.error);
+    }
+}
+
+document.getElementById('tools-ai-desktop').addEventListener(
+    'click',
+    debounce(() => {
+        hideToolsPopup();
+        launchAiDesktop();
+    })
+);
+
+document.getElementById('btnAiDesktop').addEventListener('click', debounce(launchAiDesktop));
+
+// AI Desktop failure popup: same overlay/style as the Tools popup. Shows the shared
+// help content plus the captured launch error under a collapsible.
+function showAiHelpPopup(detail) {
+    const detail0 = (detail || '').trim();
+    if (detail0) {
+        aiHelpDetailTextEl.textContent = detail0;
+        aiHelpDetailsEl.style.display = '';
+    } else {
+        aiHelpDetailsEl.style.display = 'none';
+    }
+    aiHelpOverlayEl.classList.add('active');
+}
+
+function hideAiHelpPopup() {
+    aiHelpOverlayEl.classList.remove('active');
+}
+
+// Open help links (e.g. the Node.js download link) in the system browser.
+aiHelpBodyEl.addEventListener('click', (event) => {
+    const extLink = event.target.closest('.ai-help-ext-link');
+    if (extLink) {
+        event.preventDefault();
+        window.electronAPI.openExternalLink(extLink.getAttribute('href'));
+    }
+});
+
+document.getElementById('ai-help-close-btn').addEventListener('click', hideAiHelpPopup);
+
+aiHelpOverlayEl.addEventListener('click', (event) => {
+    if (event.target === aiHelpOverlayEl) {
+        hideAiHelpPopup();
+    }
+});
+
 document.getElementById('btnEditConfig').addEventListener(
     'click',
     debounce(() => {
@@ -823,7 +951,16 @@ window.electronAPI.onConfigUpdated((config, profileColors, status) => {
     });
 });
 
+function reconcileUiWithProxyStatus(status) {
+    if (!status || !Number.isInteger(status.activeProfileIndex)) return;
+    if (placeholderOverlayEl.classList.contains('active')) {
+        hidePlaceholderDialog();
+        placeHolderOptionsMap = {};
+    }
+}
+
 window.electronAPI.onProxyStatusUpdate((status) => {
+    reconcileUiWithProxyStatus(status);
     updateStatusDisplay(status);
 });
 

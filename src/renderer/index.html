@@ -3,13 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <title>Checkout-Proxy</title>
-    <meta content="script-src 'self'; style-src 'self' 'unsafe-inline';" http-equiv="Content-Security-Policy">
+    <meta content="script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';" http-equiv="Content-Security-Policy">
     <link href="./style/styles.css" rel="stylesheet">
 </head>
 <body>
 <div class="container">
     <div class="header">
-        <h1 class="title">Checkout-Proxy</h1>
+        <div class="title-group">
+            <button id="btnAiDesktop" class="btn-ai-desktop-icon" title="AI Desktop">
+                <svg class="btn-ai-svg" viewBox="0 0 24 24" id="Artwork" xmlns="http://www.w3.org/2000/svg" fill="#000000"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"><circle cx="12.76" cy="7.69" r="2.06" style="fill:#2c3e50"></circle><circle cx="11.24" cy="16.31" r="2.06" style="fill:#2c3e50"></circle><circle cx="16.31" cy="12.76" r="2.06" style="fill:#2c3e50"></circle><circle cx="7.69" cy="11.24" r="2.06" style="fill:#2c3e50"></circle><circle cx="9.06" cy="7.8" r="1.13" style="fill:#5b7a99"></circle><circle cx="14.94" cy="16.2" r="1.13" style="fill:#5b7a99"></circle><circle cx="7.8" cy="14.94" r="1.13" style="fill:#5b7a99"></circle><circle cx="16.2" cy="9.06" r="1.13" style="fill:#5b7a99"></circle><circle cx="11.17" cy="4.06" r="1.5" style="fill:#5b7a99"></circle><circle cx="12.83" cy="19.94" r="1.5" style="fill:#5b7a99"></circle><circle cx="4.06" cy="12.83" r="1.5" style="fill:#5b7a99"></circle><circle cx="19.94" cy="11.17" r="1.5" style="fill:#5b7a99"></circle><circle cx="16.54" cy="5.15" r="1.69" style="fill:#a3b8cc"></circle><circle cx="7.46" cy="18.85" r="1.69" style="fill:#a3b8cc"></circle><circle cx="5.23" cy="7.35" r="1.69" style="fill:#a3b8cc"></circle><circle cx="18.77" cy="16.65" r="1.69" style="fill:#a3b8cc"></circle></g></svg>
+            </button>
+            <h1 class="title">Checkout-Proxy</h1>
+        </div>
         <div class="status-info">
             <p style="display: flex; flex-direction: column;">
                 <span id="activeProfile" style="display: flex; align-items: center; justify-content: flex-end">
@@ -51,6 +56,7 @@
         </div>
     </div>
 </div>
+<div id="placeholder-options-host"></div>
 <div class="overlay" id="more-overlay">
     <div class="popover more-popup" id="more-popup">
         <div class="more-popup-title">More Options</div>
@@ -112,6 +118,13 @@
                     <span class="tools-popup-btn-desc">md5/url/unicode/base64 supported</span>
                 </span>
             </button>
+            <button class="tools-popup-btn tools-btn-ai" id="tools-ai-desktop">
+                <span class="tools-popup-btn-icon">🤖</span>
+                <span class="tools-popup-btn-text">
+                    <span class="tools-popup-btn-name">AI Desktop</span>
+                    <span class="tools-popup-btn-desc"> AI workspace with GUI</span>
+                </span>
+            </button>
             <button class="tools-popup-btn tools-btn-proxy" id="tools-toggle-proxy">
                 <span class="tools-popup-btn-icon">🧭</span>
                 <span class="tools-popup-btn-text">
@@ -119,6 +132,23 @@
                     <span class="tools-popup-btn-desc" id="tools-proxy-status">Status: Checking...</span>
                 </span>
             </button>
+        </div>
+    </div>
+</div>
+<div class="overlay" id="ai-help-overlay">
+    <div class="tools-popup ai-help-popup" id="ai-help-popup">
+        <div class="tools-popup-title">⚠️ Could not start AI Desktop</div>
+        <div class="ai-help-popup-content">
+            <div class="ai-help-body" id="ai-help-body"></div>
+            <div class="ai-help-details" id="ai-help-details" style="display:none">
+                <details>
+                    <summary>Show error details</summary>
+                    <pre id="ai-help-detail-text"></pre>
+                </details>
+            </div>
+        </div>
+        <div class="ai-help-footer">
+            <button class="ai-help-close-btn" id="ai-help-close-btn">Close</button>
         </div>
     </div>
 </div>

@@ -39,8 +39,8 @@ import {
     ONE_DAY_MS,
     USE_NO_AGENT
 } from '../constant/constant.js';
-import { CustomHttpAgent } from './agent.js';
 import { pipeResponseAndMaybeAddTrailers } from './trailer-forwarding.js';
+import { CustomMixedAgent, isSocksProxy } from './agent.js';
 import {
     isDisplayableContentType,
     parseCharset,
@@ -68,12 +68,28 @@ let rootCAString;
 let rootCAKeyString;
 
 const certCache = new LRUCache(10000, 1000 * 3600 * 240); // 10,000 entries, 10 day TTL
-const agentCache = new LRUCache(100, 1000 * 120, (item) => safeDestroy(item, null, '[AgentCache]', true)); // 100 entries, 2min ttl
+const agentCache = new LRUCache(200, 1000 * 1200, (item) => safeDestroy(item, null, '[AgentCache]', true)); // 200 entries, 20min ttl (refreshed on access)
+const MAX_SECURE_CONTEXTS = 256; // cached per-host tls.SecureContext objects (~28 KB each) before LRU eviction
+const secureContextCache = new LRUCache(MAX_SECURE_CONTEXTS, 1000 * 3600 * 24); // per-host tls.SecureContext, 1 day TTL (matches certCache)
+
+// One RSA keypair reused for every generated leaf cert — only the subject/SAN differs per host.
+// This turns each cache-miss cert into a cheap sign instead of a ~65 ms keygen. Sharing one key
+// across MITM leaf certs is standard (e.g. mitmproxy) and safe here: the proxy already terminates
+// all TLS, and the trust anchor is the user-installed root CA, not the leaf key.
+let sharedLeafKeys = null; // { publicKey, keyPem } — generated lazily on first cert
+// let caSigningKey = null; // native (OpenSSL) handle to the CA private key, created lazily on first cert
 
 const SERVER_REQUEST_TIMEOUT_SEC = 1200; // seconds
 
 export function clearCertCache() {
     certCache.clear();
+    clearSecureContextCache();
+}
+
+function clearSecureContextCache() {
+    secureContextCache.clear();
+    sharedLeafKeys = null;
+    // caSigningKey = null;
 }
 
 export function clearAgentCache() {
@@ -198,9 +214,15 @@ const getGenerateServerCertificate = () => {
         generateServerCertificate: (hostname) => {
             const cached = certCache.get(hostname);
             if (cached) return cached;
-            const keys = forge.pki.rsa.generateKeyPair(2048);
+
+            // if (!caSigningKey) caSigningKey = crypto.createPrivateKey(forge.pki.privateKeyToPem(localCAKey));
+            if (!sharedLeafKeys) {
+                const kp = forge.pki.rsa.generateKeyPair(2048);
+                sharedLeafKeys = { publicKey: kp.publicKey, keyPem: forge.pki.privateKeyToPem(kp.privateKey) };
+            }
+
             const cert = forge.pki.createCertificate();
-            cert.publicKey = keys.publicKey;
+            cert.publicKey = sharedLeafKeys.publicKey;
             cert.serialNumber = generateSerialNumber();
             const now = new Date();
             cert.validity.notBefore = new Date(now.getTime() - 20 * ONE_DAY_MS);
@@ -234,9 +256,17 @@ const getGenerateServerCertificate = () => {
             ]);
 
             cert.sign(localCAKey, forge.md.sha256.create());
+            // // Sign with OpenSSL instead of forge's pure-JS RSA (~1 ms vs ~22 ms): forge builds
+            // // the TBSCertificate, Node's crypto signs those DER bytes with the CA key.
+            // cert.signatureOid = forge.pki.oids.sha256WithRSAEncryption;
+            // cert.siginfo.algorithmOid = forge.pki.oids.sha256WithRSAEncryption;
+            // const tbs = forge.pki.getTBSCertificate(cert);
+            // const tbsDer = forge.asn1.toDer(tbs).getBytes();
+            // cert.signature = crypto.sign('sha256', Buffer.from(tbsDer, 'binary'), caSigningKey).toString('binary');
+            // cert.tbsCertificate = tbs;
 
             const tlsCert = {
-                key: forge.pki.privateKeyToPem(keys.privateKey),
+                key: sharedLeafKeys.keyPem,
                 cert: forge.pki.certificateToPem(cert)
             };
 
@@ -248,15 +278,20 @@ const getGenerateServerCertificate = () => {
 };
 
 const getSNICallback = (generateServerCertificate) => {
-    return (servername, cb) => {
+    return (host, cb) => {
         try {
-            const { key, cert } = generateServerCertificate(servername || 'unknown.fallback.local');
-            return cb(null, tls.createSecureContext({ key, cert }));
+            let ctx = secureContextCache.get(host);
+            if (!ctx) {
+                const { key, cert } = generateServerCertificate(host || 'unknown.fallback.local');
+                ctx = tls.createSecureContext({ key, cert });
+                secureContextCache.set(host, ctx);
+            }
+            return cb(null, ctx);
         } catch (err) {
-            logError(`Error in SNICallback for ${servername}:`, err);
+            logError(`Error in SNICallback for ${host}:`, err);
             // cb(err); // This might crash the server, better to log and potentially use a default context or fail gracefully
             // To avoid crashing, don't call cb(err) directly if generateServerCertificate can throw.
-            errorStateHandler?.(`Cannot generate certificate for ${servername}: ${err?.code}-${err?.message}.`, true);
+            errorStateHandler?.(`Cannot generate certificate for ${host}: ${err?.code}-${err?.message}.`, true);
             return cb(null, tls.createSecureContext({}));
         }
     };
@@ -307,19 +342,65 @@ const processBypassCors = (requestOrigin, responseHeaders) => {
     removeHeaderWithIgnoreCase(responseHeaders, 'x-frame-options');
 };
 
-const getCustomHttpAgent = (protocol, proxyUrl) => {
-    const agentUrlFactor = getUrlFactor(proxyUrl);
-    if (!agentUrlFactor) return undefined;
-    return (
-        agentCache.get(`${protocol}|${proxyUrl}`) ??
-        agentCache.set(
-            `${protocol}|${proxyUrl}`,
-            new CustomHttpAgent(`${protocol}:`, agentUrlFactor, {
+// Build a `proxy` descriptor (host/port/credentials/protocol) from a proxy URL,
+// as expected by `CustomMixedAgent`. Ports default to the protocol convention
+// (SOCKS 1080, https 443, http 80). Credentials stay percent-encoded here — the
+// agent decodes them when building SOCKS auth / Proxy-Authorization.
+const buildProxyDescriptor = (proxyUrl, isSocksProxy) => {
+    const u = new URL(proxyUrl);
+    const proxyProtocol = u.protocol.replace(':', '').toLowerCase();
+    const port = u.port ? Number(u.port) : isSocksProxy ? 1080 : proxyProtocol === 'https' ? 443 : 80;
+    return {
+        host: u.hostname,
+        port,
+        username: u.username || undefined,
+        password: u.password || undefined,
+        protocol: proxyProtocol,
+        href: u.href,
+        isSocks: isSocksProxy
+    };
+};
+
+const getProxyAgent = (protocol, proxyUrl) => {
+    if (!getUrlFactor(proxyUrl)) return undefined;
+    const cacheKey = `${protocol}|${proxyUrl}`;
+    const cached = agentCache.get(cacheKey, true);
+    if (cached) return cached;
+    const isHttps = protocol === 'https';
+    const useSocksProxy = isSocksProxy(proxyUrl);
+
+    // Plain-HTTP targets always go through `CustomMixedAgent`, never Node's built-in
+    // `proxyEnv`: proxyEnv rewrites the request into absolute-URI form and requires an
+    // explicit `Host` header to exactly match the request authority (`host:port`),
+    // throwing synchronously out of `http.request()` otherwise (Node's
+    // `rewriteForProxiedHttp`). `keepHostHeader: true` and `hackRequest` can both
+    // deliberately make the two differ. `CustomMixedAgent.setRequestProps()` builds the
+    // absolute-URI from whatever Host header is already on the request instead of
+    // validating it, so it has no such restriction.
+    // HTTPS targets are unaffected regardless of proxy type — they always tunnel via
+    // CONNECT, whose inner request stays in origin-form (no Host/authority check) — so a
+    // non-SOCKS proxy for an HTTPS target keeps using the built-in agent.
+    if (useSocksProxy || !isHttps) {
+        const agent = new CustomMixedAgent(
+            isHttps ? 'https:' : 'http:',
+            buildProxyDescriptor(proxyUrl, useSocksProxy),
+            {
                 keepAlive: true,
-                keepAliveMsecs: 8000
-            })
-        )
-    );
+                timeout: SERVER_REQUEST_TIMEOUT_SEC * 1000,
+                ...(isHttps ? { rejectUnauthorized: false } : {})
+            }
+        );
+        return agentCache.set(cacheKey, agent);
+    }
+
+    const agent = new https.Agent({
+        keepAlive: true,
+        proxyEnv: { HTTPS_PROXY: proxyUrl },
+        // check: test/agent-no-timeout.test.mjs
+        timeout: SERVER_REQUEST_TIMEOUT_SEC * 1000,
+        rejectUnauthorized: false
+    });
+    return agentCache.set(cacheKey, agent);
 };
 
 // Request logging helper - logs MITM'd requests to console window
@@ -626,6 +707,7 @@ const setupResponseCollection = (proxyRes, logId, shouldLog) => {
 };
 
 export const getStartServers = (errorStateCallback, serverErrorCallback) => {
+    clearCertCache();
     const { generateServerCertificate } = getGenerateServerCertificate();
     const getSecureContext = getSNICallback(generateServerCertificate);
     errorStateHandler = errorStateCallback;
@@ -638,12 +720,17 @@ export const getStartServers = (errorStateCallback, serverErrorCallback) => {
             clearAgentCache();
             const httpPort = appPort[0];
             const profile = currentProfile;
-            const httpServer = addShutdown(http.createServer());
+            const httpServer = addShutdown(
+                http.createServer({
+                    requestTimeout: SERVER_REQUEST_TIMEOUT_SEC * 1000
+                })
+            );
             const httpsServer = addShutdown(
                 https.createServer({
                     key: localCAKeyString,
                     cert: localCAString,
-                    ciphers: 'ALL:!LOW:!DSS:!EXP'
+                    ciphers: 'ALL:!LOW:!DSS:!EXP',
+                    requestTimeout: SERVER_REQUEST_TIMEOUT_SEC * 1000
                 }),
                 { suppressCloseErrors: ['ERR_SERVER_NOT_RUNNING'] }
             );
@@ -876,10 +963,15 @@ export const getStartServers = (errorStateCallback, serverErrorCallback) => {
                 const hackedOptions = (mapping?.hackRequest || []).reduce((acc, f) => f(acc), changeableOptions) ?? {};
                 const logPrefix = `[HTTP Proxy][${hackedOptions.hostname}:${hackedOptions.port}]`;
 
-                const options = { ...hackedOptions, rejectUnauthorized: false, maxHeaderSize: MAX_HEADER_SIZE };
+                const options = {
+                    ...hackedOptions,
+                    rejectUnauthorized: false,
+                    maxHeaderSize: MAX_HEADER_SIZE,
+                    insecureHTTPParser: true
+                };
                 if (typeof options.timeout === 'undefined') options.timeout = SERVER_REQUEST_TIMEOUT_SEC * 1000;
                 if (options.proxyUrl) {
-                    options.agent = getCustomHttpAgent(options.protocol, options.proxyUrl);
+                    options.agent = getProxyAgent(options.protocol, options.proxyUrl);
                 }
 
                 const savedProxyUrl = options.agent ? options.proxyUrl : USE_NO_AGENT[0];
@@ -1112,10 +1204,15 @@ export const getStartServers = (errorStateCallback, serverErrorCallback) => {
                 const hackedOptions = (mapping?.hackRequest || []).reduce((acc, f) => f(acc), changeableOptions) ?? {};
                 const logPrefix = `[HTTPS Proxy][${hackedOptions.hostname}:${hackedOptions.port}]`;
 
-                const options = { ...hackedOptions, rejectUnauthorized: false, maxHeaderSize: MAX_HEADER_SIZE };
+                const options = {
+                    ...hackedOptions,
+                    rejectUnauthorized: false,
+                    maxHeaderSize: MAX_HEADER_SIZE,
+                    insecureHTTPParser: true
+                };
                 if (typeof options.timeout === 'undefined') options.timeout = SERVER_REQUEST_TIMEOUT_SEC * 1000;
                 if (options.proxyUrl) {
-                    options.agent = getCustomHttpAgent(options.protocol, options.proxyUrl);
+                    options.agent = getProxyAgent(options.protocol, options.proxyUrl);
                 }
 
                 const savedProxyUrl = options.agent ? options.proxyUrl : USE_NO_AGENT[0];

@@ -30,7 +30,6 @@ const http = require('node:http');
 const net = require('node:net');
 const assert = require('node:assert');
 const { pipeResponseAndMaybeAddTrailers } = require('../trailer-forwarding.js');
-const { CustomHttpAgent } = require('../agent.js');
 
 function listen0(server) {
     return new Promise((resolve, reject) => {
@@ -88,6 +87,7 @@ describe('Trailer Forwarding Integration Test', () => {
         const upstreamPort = await listen0(upstream);
 
         // 1. Start a temporary HTTP proxy server
+        let proxyHits = 0; // proves the request actually traversed the upstream proxy
         const tempProxy = http.createServer();
         tempProxy.on('connect', (req, clientSocket, head) => {
             const [host, port] = req.url.split(':');
@@ -104,8 +104,10 @@ describe('Trailer Forwarding Integration Test', () => {
                 serverSocket.destroy();
             });
         });
-        // Handle normal GET/POST requests to the proxy
+        // Handle normal GET/POST requests to the proxy (absolute-form, the path the
+        // built-in proxyEnv uses for HTTP targets).
         tempProxy.on('request', (req, res) => {
+            proxyHits++;
             const url = new URL(req.url, 'http://' + (req.headers.host || '127.0.0.1'));
             const proxyReq = http.request(
                 {
@@ -128,17 +130,21 @@ describe('Trailer Forwarding Integration Test', () => {
         });
         const tempProxyPort = await listen0(tempProxy);
 
-        // 2. Proxy server that uses CustomHttpAgent to forward requests through tempProxy
+        // 2. Proxy server that uses Node's built-in proxy support (the `proxyEnv`
+        //    Agent option, Node >= 24.5 — Electron 42 bundles Node 24.16) to forward
+        //    requests through tempProxy. This is what replaced the old CustomHttpAgent.
         const proxy = http.createServer((clientReq, clientRes) => {
-            const agent = new CustomHttpAgent(
-                'http:',
-                {
-                    host: '127.0.0.1',
-                    port: tempProxyPort,
-                    protocol: 'http'
-                },
-                { keepAlive: false }
-            );
+            const agent = new http.Agent({
+                keepAlive: false,
+                proxyEnv: { HTTP_PROXY: `http://127.0.0.1:${tempProxyPort}` }
+            });
+
+            // proxyEnv rewrites the request into absolute-URI form and requires the `Host`
+            // header to exactly match the request authority (host:port); the client's
+            // original Host (127.0.0.1:<proxyPort>, the port it connected to) differs from
+            // the actual target (127.0.0.1:<upstreamPort>), so it must be overwritten here —
+            // mirroring what proxy-server.js does by default (absent `keepHostHeader: true`).
+            const headers = { ...clientReq.headers, host: `127.0.0.1:${upstreamPort}` };
 
             const proxyReq = http.request(
                 {
@@ -146,7 +152,7 @@ describe('Trailer Forwarding Integration Test', () => {
                     port: upstreamPort,
                     path: clientReq.url,
                     method: clientReq.method,
-                    headers: { ...clientReq.headers },
+                    headers,
                     agent: agent
                 },
                 (proxyRes) => {
@@ -174,6 +180,11 @@ describe('Trailer Forwarding Integration Test', () => {
 
             assert.strictEqual(result.statusCode, 200);
             assert.strictEqual(result.body, 'helloworld');
+
+            // Guard: the request must have gone through the upstream proxy via the
+            // built-in proxyEnv agent. If this is 0, proxyEnv was silently ignored
+            // (e.g. running on Node < 24.5) and the request went directly instead.
+            assert.ok(proxyHits >= 1, `Expected the request to traverse the proxyEnv proxy, got proxyHits=${proxyHits}`);
 
             // `Trailer` header is lower-cased by Node client.
             assert.ok(

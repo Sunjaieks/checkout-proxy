@@ -71,6 +71,20 @@ const saveCurrentTab = () => {
     return true;
 };
 
+// Ace is only needed for the JSON tabs; building it eagerly on load would pay for its DOM
+// setup and worker startup even when the user never leaves the default profile UI tab.
+const ensureEditor = () => {
+    if (!editor) {
+        editor = ace.edit(editorEl, {
+            wrap: true,
+            theme: 'ace/theme/xcode',
+            mode: 'ace/mode/json',
+            newLineMode: 'unix'
+        });
+    }
+    return editor;
+};
+
 // Populate new tab from memory
 const populateTab = (tabIndex) => {
     const isUITab = tabIndex === 0 || tabIndex === 2;
@@ -87,12 +101,12 @@ const populateTab = (tabIndex) => {
         );
         return;
     } else if (tabIndex === 1) {
-        editor.setValue(JSON.stringify(profileJson, null, 2), -1);
+        ensureEditor().setValue(JSON.stringify(profileJson, null, 2), -1);
     } else if (tabIndex === 2) {
         globalSettingsForm.populate(globalSettingsJson);
         return;
     } else if (tabIndex === 3) {
-        editor.setValue(JSON.stringify(globalSettingsJson, null, 2), -1);
+        ensureEditor().setValue(JSON.stringify(globalSettingsJson, null, 2), -1);
     }
     if (!isUITab) {
         editor.getSession().setMode('ace/mode/json');
@@ -135,12 +149,6 @@ window.electronAPI.loadConfigForEditing(async ({ currentConfig, profileColors, d
         messageEl.style.color = 'red';
         messageEl.textContent = CONFIG_OUTDATED_MESSAGE;
     }
-    editor = ace.edit(editorEl, {
-        wrap: true,
-        theme: 'ace/theme/xcode',
-        mode: 'ace/mode/json',
-        newLineMode: 'unix'
-    });
 
     title.closest('.editor-container-title-inner').nextElementSibling.textContent = profileJson.name ?? '';
 

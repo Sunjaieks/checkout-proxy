@@ -8,6 +8,13 @@ function basicMarkdownToHtml(mdText) {
     let inCodeBlock = false; // State for whether we are currently inside a code block
     let codeLang = '';       // Language for the current code block (e.g., 'javascript')
 
+    // Escape HTML special characters so raw text (e.g. `<some-url>`) is not
+    // swallowed by the browser as an unknown HTML tag when inserted via innerHTML.
+    const escapeHtml = (text) => text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
     // 2. Inline parser function
     // This handles styling within a line, like bold, links, etc.
     const parseInline = (text) => {
@@ -17,11 +24,38 @@ function basicMarkdownToHtml(mdText) {
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
             .replace(/~~(.*?)~~/g, '<del>$1</del>') // Strikethrough
             // Inline code, ensuring its content is properly escaped
-            .replace(/`([^`]+)`/g, (match, code) => `<code>${code.replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>')}</code>`);
+            .replace(/`([^`]+)`/g, (match, code) => `<code>${escapeHtml(code)}</code>`);
     };
 
+    // Slugify a heading the way GitHub does, so the `[text](#anchor)` links written in
+    // README.md resolve against the ids we emit: lowercase, drop everything that is not a
+    // word character / space / hyphen (punctuation and emoji included), spaces to hyphens.
+    // A repeated heading gets a `-1`, `-2`, … suffix, again matching GitHub.
+    const usedSlugs = new Map();
+    const slugify = (text) => {
+        const base = text
+            .trim()
+            .toLowerCase()
+            .replace(/[^\w\s-]/gu, '')
+            .replace(/\s/g, '-');
+        const seen = usedSlugs.get(base);
+        usedSlugs.set(base, seen === undefined ? 0 : seen + 1);
+        return seen === undefined ? base : `${base}-${seen + 1}`;
+    };
+
+    // Detect a table separator row like `| --- | --- |` (dashes/colons only).
+    const isTableSeparator = (text) => {
+        const inner = text.trim().replace(/^\|/, '').replace(/\|$/, '');
+        const cells = inner.split('|');
+        return cells.length > 0 && cells.every((c) => /^\s*:?-+:?\s*$/.test(c));
+    };
+
+    // Split a `| a | b |` row into trimmed cell strings.
+    const splitTableRow = (text) => text.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+
     // 3. Main parsing loop, processes line by line
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
 
         // --- Core Improvement: Prioritize code block toggling ---
         // This must be checked first, as it overrides all other syntax.
@@ -46,7 +80,38 @@ function basicMarkdownToHtml(mdText) {
 
         // If inside a code block, just append the line (escaped) and skip other parsing
         if (inCodeBlock) {
-            html += line.replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>') + '\n';
+            html += escapeHtml(line) + '\n';
+            continue;
+        }
+
+        // --- Table Processing ---
+        // A table is a header row followed by a separator row (e.g. `| --- | --- |`).
+        if (line.trim().startsWith('|') && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+            // A table cannot live inside a list, so close any open lists first.
+            while (listStack.length > 0) {
+                html += `</${listStack.pop().type}>\n`;
+            }
+
+            const headerCells = splitTableRow(line);
+            i++; // consume the separator row
+            html += '<table>\n<thead>\n<tr>';
+            for (const cell of headerCells) {
+                html += `<th>${parseInline(cell)}</th>`;
+            }
+            html += '</tr>\n</thead>\n<tbody>\n';
+
+            // Consume body rows: any following line that starts with `|`.
+            while (i + 1 < lines.length && lines[i + 1].trim().startsWith('|')) {
+                i++;
+                const cells = splitTableRow(lines[i]);
+                html += '<tr>';
+                for (const cell of cells) {
+                    html += `<td>${parseInline(cell)}</td>`;
+                }
+                html += '</tr>\n';
+            }
+
+            html += '</tbody>\n</table>\n';
             continue;
         }
 
@@ -100,7 +165,7 @@ function basicMarkdownToHtml(mdText) {
         if (headerMatch) {
             const level = headerMatch[1].length;
             const content = parseInline(headerMatch[2]);
-            html += `<h${level}>${content}</h${level}>\n`;
+            html += `<h${level} id="${slugify(headerMatch[2])}">${content}</h${level}>\n`;
         } else {
             // Finally, treat it as a paragraph.
             html += `<p>${parseInline(trimmedLine)}</p>\n`;
@@ -127,9 +192,15 @@ async function loadHelpContent() {
                 link.addEventListener('click', (event) => {
                     event.preventDefault();
                     const url = link.getAttribute('href');
-                    if (url) {
-                        window.electronAPI.openExternalLink(url);
+                    if (!url) return;
+                    // A `#section` link is this guide's own table of contents, not an
+                    // external URL — scroll to the heading instead of handing it to the OS.
+                    if (url.startsWith('#')) {
+                        const target = document.getElementById(decodeURIComponent(url.slice(1)));
+                        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        return;
                     }
+                    window.electronAPI.openExternalLink(url);
                 });
             });
         }catch (error){

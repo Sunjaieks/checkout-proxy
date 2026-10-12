@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Tools popup actions
     openUrlTool: () => ipcRenderer.send('open-url-tool'),
+    openAiDesktop: () => ipcRenderer.invoke('open-ai-desktop'),
     getSystemProxyStatus: () => ipcRenderer.invoke('get-system-proxy-status'),
     toggleSystemProxy: (enable) => ipcRenderer.invoke('toggle-system-proxy', enable),
 
